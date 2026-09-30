@@ -91,6 +91,7 @@ const parse = (schema, input, res) => {
 
 // ---- App ----
 const app = express();
+app.set('trust proxy', 1); // Railway sits behind a proxy
 app.use(helmet());
 app.use(cors());
 app.use(express.json({ limit: '50kb' }));
