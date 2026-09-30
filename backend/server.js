@@ -50,7 +50,7 @@ function normalizeVehicle(r) {
     companyId: r.company_id ?? null,
     companyName: r.company_name ?? r.name ?? 'Tow operator',
     vehicleType: r.vehicle_type,
-    plate: r.license_plate ?? r.plate ?? null,
+    plate: r.registration_number ?? r.license_plate ?? null,
     lat: r.lat ?? r.latitude,
     lng: r.lng ?? r.longitude,
     distanceKm,
@@ -112,7 +112,7 @@ app.patch('/api/vehicles/:id/location', requireUser, wrap(async (req, res) => {
   if (!id.success) return res.status(400).json({ error: 'Invalid vehicle id' });
   const body = parse(locationBody, req.body, res); if (!body) return;
 
-  // ASSUMPTION: towing_companies.owner_user_id links a company to its auth user.
+  // Requires towing_companies.owner_user_id (added by supabase/get_nearby_vehicles.sql).
   const { data: v, error: vErr } = await supabase
     .from('vehicles')
     .select('id, is_active, towing_companies!inner(owner_user_id)')
@@ -148,20 +148,20 @@ app.post('/api/requests', requireUser, wrap(async (req, res) => {
   const chosen = candidates.find((v) => v.vehicleId === b.vehicleId);
   if (!chosen) return res.status(409).json({ error: 'That truck is no longer available. Pick another.' });
 
-  // ASSUMPTION: column names on tow_requests; align with your migration.
   const { data, error } = await supabase
     .from('tow_requests')
     .insert({
       user_id: req.user.id,
-      vehicle_id: chosen.vehicleId,
+      selected_company_id: chosen.companyId,
+      assigned_vehicle_id: chosen.vehicleId,
       pickup_location: ewkt(b.pickup),
       dropoff_location: ewkt(b.dropoff),
-      trip_distance_km: b.tripDistanceKm,
-      estimate_min: chosen.priceMin,
-      estimate_max: chosen.priceMax,
+      estimated_distance_km: b.tripDistanceKm,
+      estimated_price_min: chosen.priceMin,
+      estimated_price_max: chosen.priceMax,
       status: 'pending',
     })
-    .select('id, status, estimate_min, estimate_max, created_at')
+    .select('id, status, estimated_price_min, estimated_price_max, created_at')
     .single();
   if (error) throw error;
 
