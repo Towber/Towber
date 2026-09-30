@@ -11,7 +11,7 @@ export const supabase = createClient(
 );
 
 export type LatLng = { lat: number; lng: number };
-export type VehicleType = 'flatbed' | 'standard' | 'heavy_recovery';
+export type VehicleType = 'flatbed_rollback' | 'standard_tow' | 'heavy_duty' | 'winch_recovery';
 
 export type Truck = {
   vehicleId: string;
