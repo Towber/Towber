@@ -38,6 +38,8 @@ towber/
 
 The live request columns include `user_id`, `selected_company_id`, `assigned_vehicle_id`, `pickup_location`, `dropoff_location`, `estimated_distance_km`, `estimated_price_min`, `estimated_price_max`, and `status`; the new migration adds `breakdown_type`. The backend uses this contract.
 
+The client route requests foreground GPS permission on mount, centers the map on the resulting fix, and sends the pickup `{lat, lng}` with an authenticated `POST /api/requests`. The backend writes `public.tow_requests.pickup_location` as a PostGIS geography point (`POINT(longitude latitude)`). There is no `towing_requests` table in this project; mobile does not insert directly because authenticated clients do not have request-table INSERT permission or the service-role key.
+
 ## 2. Backend (Railway or local development)
 
 ```bash
