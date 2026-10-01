@@ -37,6 +37,7 @@ const requestBody = z.object({
   dropoff: point,
   vehicleId: z.string().uuid(),
   tripDistanceKm: z.number().min(0.5).max(1500),
+  breakdownType: z.enum(['flatbed', 'jumpstart', 'lockout']).default('flatbed'),
 });
 
 // ---- Helpers ----
@@ -166,6 +167,7 @@ app.post('/api/requests', requireUser, wrap(async (req, res) => {
       estimated_distance_km: b.tripDistanceKm,
       estimated_price_min: total,
       estimated_price_max: total,
+      breakdown_type: b.breakdownType,
       fare_service_class_code: fare.service_class_code,
       fare_currency: 'ZAR',
       quoted_callout_fee_zar: numeric(fare.callout_fee_zar),
@@ -174,7 +176,7 @@ app.post('/api/requests', requireUser, wrap(async (req, res) => {
       fare_quoted_at: new Date().toISOString(),
       status: 'pending',
     })
-    .select('id, status, estimated_price_min, estimated_price_max, fare_currency, fare_service_class_code, fare_quoted_at, created_at')
+    .select('id, status, breakdown_type, estimated_price_min, estimated_price_max, fare_currency, fare_service_class_code, fare_quoted_at, created_at')
     .single();
   if (error) throw error;
 

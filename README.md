@@ -33,10 +33,10 @@ towber/
 
    `migration repair` changes only Supabase's history table; it does not run SQL. Do not use this repair on a fresh project. The normal ordered migrations should run there.
 
-   The migrations create or extend the live-compatible `towing_companies`, `vehicles`, `rate_cards`, and `tow_requests` schema; PostGIS geography columns and indexes; owner/request read policies; the API-only nearby/fare RPCs; private driver-location broadcasts; driver verification metadata; and a private Storage bucket. Review the migration history before applying it to an existing project.
+   The migrations create or extend the live-compatible `towing_companies`, `vehicles`, `rate_cards`, and `tow_requests` schema; PostGIS geography columns and indexes; owner/request read policies; the API-only nearby/fare RPCs; private driver-location broadcasts; driver verification metadata; app profiles and roles; breakdown-service request fields; driver job alerts; and a private Storage bucket. Review the migration history before applying it to an existing project.
 3. The schema migration does not seed business data. Use existing verified fleet records in a linked project, or add approved companies, active vehicles, and rate cards before testing search. Do not mark unverified real companies as verified just to populate the map.
 
-The live request columns are `user_id`, `selected_company_id`, `assigned_vehicle_id`, `pickup_location`, `dropoff_location`, `estimated_distance_km`, `estimated_price_min`, `estimated_price_max`, and `status`. The backend uses this deployed contract.
+The live request columns include `user_id`, `selected_company_id`, `assigned_vehicle_id`, `pickup_location`, `dropoff_location`, `estimated_distance_km`, `estimated_price_min`, `estimated_price_max`, and `status`; the new migration adds `breakdown_type`. The backend uses this contract.
 
 ## 2. Backend (Railway or local development)
 
@@ -107,7 +107,13 @@ Release/preview builds check for updates when launched. They download a compatib
 - The `driver-verification-private` bucket is private, limits files to 10 MiB, and permits PDF/JPEG/PNG. `driver_verification_documents` stores PDP and vehicle licensing-disc metadata, expiry dates, and review status. Upload paths start with the submitting user's UUID. The mobile app has not yet added a document-picker/review screen.
 - `tow_service_classes` maps vehicles to Light Tow, Heavy Duty, or Flatbed. `tow_fare_rates` supports company-specific, effective-dated ZAR call-out, per-kilometre, and minimum rates. No new tariff amounts are seeded. Until a class-specific tariff is configured, the fare RPC falls back to that company's existing ZAR `rate_cards`; if neither exists, that vehicle is not quoted. `POST /api/requests` recalculates the quote server-side and snapshots the ZAR components on the request. The estimate uses the app's straight-line × 1.3 distance until road routing is added.
 
-## 6. Checks
+## 6. Expo Router roles
+
+`mobile/app/_layout.tsx` restores/creates a Supabase session, reads the caller's `user_profiles.role`, and redirects to `/(main)/client` or `/(main)/driver`. New Auth accounts receive the least-privileged `client` role. The role table is read-only to the signed-in user; a trusted fleet administrator must promote an assigned driver, for example with `UPDATE public.user_profiles SET role = 'driver' WHERE user_id = '<auth-user-uuid>';`. The mobile app has no driver sign-in screen yet, so driver routing requires an already-authenticated driver session.
+
+The client route keeps the existing map/tow workflow and lets the user choose Flatbed, Jumpstart, or Lockout; the selection is sent with and stored on the request. The driver route reads the active vehicle assignment, streams foreground location while Online, and subscribes to private Realtime alerts for pending requests assigned to that vehicle. The Online/Offline switch currently controls this app's GPS stream; fleet-wide availability persistence and accepting/transitioning jobs are not yet implemented. Apply the new Supabase migration before testing these role/profile and driver-alert paths. It has not been applied to the linked project.
+
+## 7. Checks
 
 ```bash
 cd mobile
@@ -117,6 +123,6 @@ npx expo install --check
 npx expo config --json
 ```
 
-## 6. Current scope
+## 8. Current scope
 
-The app contains the motorist map, nearby fleet cards, ZAR quote display, request submission, and private live-location tracking for the active request. The API accepts authorized driver GPS pings. Fleet dispatch/acceptance UI, verification-document upload/review UI, driver background location, request-status tracking, real road routing, and destination autocomplete remain future work. A fare quote is an estimate; the operator may confirm a different final price.
+The app contains role-gated client and driver routes, the motorist map, nearby fleet cards, breakdown service selection, ZAR quote display, request submission, private live-location tracking, a foreground driver Online/Offline GPS toggle, and incoming-job alerts. Job acceptance/dispatch and persisted availability, verification-document upload/review UI, driver background location, real road routing, destination autocomplete, and driver authentication UI remain future work. A fare quote is an estimate; the operator may confirm a different final price.

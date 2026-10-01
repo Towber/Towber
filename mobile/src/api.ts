@@ -34,6 +34,7 @@ export type DriverLocation = LatLng & {
 };
 
 export type LocationChannelStatus = 'connecting' | 'connected' | 'error';
+export type BreakdownType = 'flatbed' | 'jumpstart' | 'lockout';
 
 // Motorists sign in anonymously so requests are tied to an auth user.
 // Enable "Anonymous sign-ins" in Supabase > Authentication > Providers.
@@ -59,7 +60,7 @@ export const fetchNearby = (p: LatLng, distanceKm: number) =>
     `/api/vehicles/nearby?lat=${p.lat}&lng=${p.lng}&distance_km=${distanceKm}`,
   ).then((r) => r.vehicles);
 
-export const createRequest = (b: { pickup: LatLng; dropoff: LatLng; vehicleId: string; tripDistanceKm: number }) =>
+export const createRequest = (b: { pickup: LatLng; dropoff: LatLng; vehicleId: string; tripDistanceKm: number; breakdownType: BreakdownType }) =>
   call<{ request: { id: string; status: string; estimated_price_min: number; estimated_price_max: number } }>('/api/requests', { method: 'POST', body: JSON.stringify(b) }, true);
 
 export function sendDriverLocation(vehicleId: string, position: DriverLocation) {

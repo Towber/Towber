@@ -9,7 +9,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { colors, darkMapStyle, font, radius, zarRange } from '../theme';
-import { createRequest, fetchNearby, LatLng, roadKm, subscribeRequestDriverLocation, Truck } from '../api';
+import { type BreakdownType, createRequest, fetchNearby, type LatLng, roadKm, subscribeRequestDriverLocation, type Truck } from '../api';
 import { SearchBar } from '../components/SearchBar';
 import { TruckCard, TruckCardSkeleton, CARD_WIDTH } from '../components/TruckCard';
 import { TruckMarker } from '../components/TruckMarker';
@@ -17,6 +17,11 @@ import { TruckMarker } from '../components/TruckMarker';
 // Johannesburg CBD fallback if location permission is denied
 const FALLBACK: LatLng = { lat: -26.2041, lng: 28.0473 };
 const DEFAULT_TRIP_KM = 10;
+const BREAKDOWN_SERVICES: { id: BreakdownType; label: string; icon: React.ComponentProps<typeof Ionicons>['name'] }[] = [
+  { id: 'flatbed', label: 'Flatbed', icon: 'car-outline' },
+  { id: 'jumpstart', label: 'Jumpstart', icon: 'flash-outline' },
+  { id: 'lockout', label: 'Lockout', icon: 'key-outline' },
+];
 
 type TrackingState = 'idle' | 'connecting' | 'connected' | 'error';
 
@@ -39,6 +44,7 @@ export default function HomeScreen() {
   const [requesting, setRequesting] = useState(false);
   const [activeRequestId, setActiveRequestId] = useState<string | null>(null);
   const [trackingState, setTrackingState] = useState<TrackingState>('idle');
+  const [breakdownType, setBreakdownType] = useState<BreakdownType>('flatbed');
 
   const tripKm = useMemo(() => (me && dest ? roadKm(me, dest) : DEFAULT_TRIP_KM), [me, dest]);
   const selected = trucks.find((t) => t.vehicleId === selectedId) ?? null;
@@ -141,12 +147,12 @@ export default function HomeScreen() {
     if (!me || !dest || !selected || activeRequestId) return;
     setRequesting(true);
     try {
-      const { request: created } = await createRequest({ pickup: me, dropoff: dest, vehicleId: selected.vehicleId, tripDistanceKm: tripKm });
+      const { request: created } = await createRequest({ pickup: me, dropoff: dest, vehicleId: selected.vehicleId, tripDistanceKm: tripKm, breakdownType });
       setActiveRequestId(created.id);
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       Alert.alert(
         'Request sent',
-        `${selected.companyName} has been notified. Reference ${created.id.slice(0, 8)}. Driver GPS updates will appear here when the driver comes online.`,
+        `${selected.companyName} has been notified for ${BREAKDOWN_SERVICES.find((service) => service.id === breakdownType)?.label}. Reference ${created.id.slice(0, 8)}. Driver GPS updates will appear here when the driver comes online.`,
       );
     } catch (e: any) {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
@@ -200,11 +206,31 @@ export default function HomeScreen() {
         <Text style={s.sosText}>SOS</Text>
       </Pressable>
 
-      <BottomSheet snapPoints={[230, '55%']} index={0} backgroundComponent={Glass} handleIndicatorStyle={{ backgroundColor: colors.textMuted, width: 40 }}>
+      <BottomSheet snapPoints={[310, '66%']} index={0} backgroundComponent={Glass} handleIndicatorStyle={{ backgroundColor: colors.textMuted, width: 40 }}>
         <BottomSheetView style={s.sheet}>
           <View style={s.head}>
             <Text style={s.title}>{activeRequestId ? 'Your tow request' : 'Nearby tow trucks'}</Text>
             {!loading && <Text style={s.count}>{trucks.length} available</Text>}
+          </View>
+          <View style={s.serviceSection}>
+            <Text style={s.servicePrompt}>Breakdown service</Text>
+            <View style={s.serviceRow}>
+              {BREAKDOWN_SERVICES.map((service) => {
+                const selectedService = breakdownType === service.id;
+                return (
+                  <Pressable
+                    key={service.id}
+                    accessibilityRole="button"
+                    accessibilityState={{ selected: selectedService }}
+                    onPress={() => setBreakdownType(service.id)}
+                    style={[s.serviceChoice, selectedService && s.serviceChoiceSelected]}
+                  >
+                    <Ionicons name={service.icon} size={17} color={selectedService ? colors.go : colors.textMuted} />
+                    <Text style={[s.serviceName, selectedService && { color: colors.text }]} numberOfLines={1}>{service.label}</Text>
+                  </Pressable>
+                );
+              })}
+            </View>
           </View>
           {activeRequestId && <Text style={s.tracking}>{trackingCopy[trackingState === 'idle' ? 'connecting' : trackingState]}</Text>}
 
@@ -233,7 +259,7 @@ export default function HomeScreen() {
                 : needsDest ? 'Enter a destination for your price'
                 : !selected ? 'Choose a truck'
                 : requesting ? 'Sending request…'
-                : `Request ${selected.companyName}  ·  ${zarRange(selected.priceMin, selected.priceMax)}`}
+                : `Request Tow  ·  ${zarRange(selected.priceMin, selected.priceMax)}`}
             </Text>
           </Pressable>
         </BottomSheetView>
@@ -248,6 +274,12 @@ const s = StyleSheet.create({
   head: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'baseline', paddingHorizontal: 20 },
   title: { color: colors.text, fontFamily: font.bold, fontSize: 18 },
   count: { color: colors.textMuted, fontFamily: font.medium, fontSize: 13 },
+  serviceSection: { gap: 8 },
+  servicePrompt: { color: colors.textMuted, fontFamily: font.medium, fontSize: 12, paddingHorizontal: 20 },
+  serviceRow: { flexDirection: 'row', gap: 8, paddingHorizontal: 16 },
+  serviceChoice: { flex: 1, minHeight: 46, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, borderRadius: 14, borderWidth: 1, borderColor: colors.border, backgroundColor: 'rgba(30,41,59,0.6)', paddingHorizontal: 6 },
+  serviceChoiceSelected: { borderColor: colors.go, backgroundColor: 'rgba(0,230,118,0.10)' },
+  serviceName: { color: colors.textMuted, fontFamily: font.semibold, fontSize: 12 },
   tracking: { color: colors.route, fontFamily: font.medium, fontSize: 12, paddingHorizontal: 20 },
   empty: { color: colors.textMuted, fontFamily: font.medium, fontSize: 14, paddingHorizontal: 20, lineHeight: 20 },
   cta: { marginHorizontal: 16, height: 54, borderRadius: 16, backgroundColor: colors.go, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 12 },
