@@ -20,8 +20,18 @@ towber/
    ```bash
    npx supabase login
    npx supabase link --project-ref <your-project-ref>
+   ```
+
+   For a **fresh project**, run `npx supabase db push` after linking.
+
+   **Existing linked Towber project only:** the remote history currently records `20260930222503`, while the earlier idempotent baseline `20260930222400` is not recorded. The four baseline tables already exist and have RLS enabled, so after verifying that remains true, reconcile the history before pushing:
+
+   ```bash
+   npx supabase migration repair 20260930222400 --status applied
    npx supabase db push
    ```
+
+   `migration repair` changes only Supabase's history table; it does not run SQL. Do not use this repair on a fresh project. The normal ordered migrations should run there.
 
    The migrations create or extend the live-compatible `towing_companies`, `vehicles`, `rate_cards`, and `tow_requests` schema; PostGIS geography columns and indexes; owner/request read policies; the API-only nearby/fare RPCs; private driver-location broadcasts; driver verification metadata; and a private Storage bucket. Review the migration history before applying it to an existing project.
 3. The schema migration does not seed business data. Use existing verified fleet records in a linked project, or add approved companies, active vehicles, and rate cards before testing search. Do not mark unverified real companies as verified just to populate the map.
