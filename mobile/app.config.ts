@@ -24,6 +24,11 @@ const config: ExpoConfig = {
   android: {
     package: 'com.towber.motorist',
     permissions: ['ACCESS_COARSE_LOCATION', 'ACCESS_FINE_LOCATION'],
+    config: {
+      googleMaps: {
+        apiKey: 'AIzaSyCByytkUXWtJy9gTa5O4z8AmFOgwxQT43g',
+      },
+    },
   },
   plugins: [
     'expo-font',
@@ -38,7 +43,7 @@ const config: ExpoConfig = {
     [
       'react-native-maps',
       {
-        androidGoogleMapsApiKey: process.env.GOOGLE_MAPS_ANDROID_API_KEY,
+        androidGoogleMapsApiKey: 'AIzaSyCByytkUXWtJy9gTa5O4z8AmFOgwxQT43g',
         iosGoogleMapsApiKey: process.env.GOOGLE_MAPS_IOS_API_KEY,
       },
     ],
