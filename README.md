@@ -1,48 +1,95 @@
-# Towber: first slice
+# Towber
 
-```
+Towber is a React Native motorist app backed by an Express API and Supabase (Postgres + PostGIS). The repository includes an EAS-ready Expo app, a Railway-compatible API, and versioned Supabase migrations.
+
+## Repository layout
+
+```text
 towber/
-├── backend/            Express API (server.js)
-└── mobile/             Expo (React Native) motorist app
-    ├── App.tsx
-    └── src/{theme.ts, api.ts, components/, screens/HomeScreen.tsx}
+├── backend/                    Express API
+├── mobile/                     Expo React Native motorist app
+├── supabase/migrations/        Versioned database schema and RLS/RPC
+└── README.md
 ```
 
-## 1. Backend
+## 1. Supabase setup
+
+1. Create a Supabase project and enable **Anonymous sign-ins** under Authentication → Sign In / Providers. The motorist app uses anonymous Auth; it does not get the server service-role key.
+2. Install the Supabase CLI, sign in, link the project, and apply migrations:
+
+   ```bash
+   npx supabase login
+   npx supabase link --project-ref <your-project-ref>
+   npx supabase db push
+   ```
+
+   The migrations create the live-compatible `towing_companies`, `vehicles`, `rate_cards`, and `tow_requests` schema; PostGIS geography columns and indexes; owner/request read policies; and the API-only `get_nearby_vehicles` RPC. The migration set includes the recorded RPC migration so local and remote history can be reconciled.
+3. The schema migration does not seed business data. Use existing verified fleet records in a linked project, or add approved companies, active vehicles, and rate cards before testing search. Do not mark unverified real companies as verified just to populate the map.
+
+The live request columns are `user_id`, `selected_company_id`, `assigned_vehicle_id`, `pickup_location`, `dropoff_location`, `estimated_distance_km`, `estimated_price_min`, `estimated_price_max`, and `status`. The backend uses this deployed contract.
+
+## 2. Backend (Railway or local development)
+
 ```bash
 cd backend
-cp .env.example .env      # add SUPABASE_URL + SUPABASE_SERVICE_ROLE_KEY
+cp .env.example .env
+# Set SUPABASE_URL and the server-only SUPABASE_SERVICE_ROLE_KEY in .env
 npm install
-npm run dev               # http://localhost:4000/health
+npm run dev
 ```
-Test: `curl "http://localhost:4000/api/vehicles/nearby?lat=-26.2041&lng=28.0473&distance_km=12"`
 
-## 2. Supabase
-- Authentication > Providers: enable **Anonymous sign-ins** (motorist requests).
-- Schema assumptions to align with your tables (edit server.js if they differ):
-  - `towing_companies.owner_user_id` (uuid, auth user who runs the fleet)
-  - `tow_requests`: `user_id, vehicle_id, pickup_location, dropoff_location, trip_distance_km, estimate_min, estimate_max, status`
-  - `get_nearby_vehicles` returns: vehicle id, company name, vehicle_type, lat/lng, distance (km or m), price min/max. `normalizeVehicle()` maps common names.
-- Add RLS so motorists can only read their own `tow_requests`. The API uses the service-role key and checks ownership itself.
+Health check: `GET /health`. Nearby vehicle example:
 
-## 3. Mobile
 ```bash
-npx create-expo-app@latest mobile-tmp --template blank-typescript
-# copy this repo's mobile/ files over the generated project (App.tsx, src/, .env.example)
-npx expo install react-native-maps expo-location expo-blur expo-haptics \
-  react-native-reanimated react-native-gesture-handler react-native-safe-area-context \
-  @react-native-async-storage/async-storage react-native-url-polyfill @expo/vector-icons
-npm i @supabase/supabase-js @gorhom/bottom-sheet @expo-google-fonts/plus-jakarta-sans expo-font
-cp .env.example .env      # set EXPO_PUBLIC_API_URL to your LAN IP on a real device
+curl 'http://localhost:4000/api/vehicles/nearby?lat=-26.2041&lng=28.0473&distance_km=12'
 ```
-`react-native-maps` with Google provider and custom styling needs a dev build, not Expo Go:
-```bash
-npx expo install expo-dev-client
-npx expo run:android      # or run:ios
-```
-Add your Google Maps API key in `app.json` (`android.config.googleMaps.apiKey`, `ios.config.googleMapsApiKey`).
 
-## Known shortcuts (next steps)
-- Route line is straight and distance is crow-flies x 1.3. Swap `roadKm` for Google Directions / Mapbox.
-- Destination search uses device geocoding. Move to Google Places Autocomplete for suggestions.
-- Driver app, job accept/decline, and request status tracking are not built yet.
+For Railway, set the service root to `backend/`, use the start command `npm start`, and configure `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` as Railway variables. Never put the service-role key in the mobile app or any `EXPO_PUBLIC_*` variable.
+
+## 3. Mobile app and EAS cloud builds
+
+```bash
+cd mobile
+npm ci
+cp .env.example .env
+# Fill in the public API URL, Supabase URL/anon key, and local map key values
+npx expo start
+```
+
+The existing app uses native Google Maps and device location. Store the two Google Maps SDK keys as restricted keys in Google Cloud and configure `GOOGLE_MAPS_ANDROID_API_KEY` and `GOOGLE_MAPS_IOS_API_KEY` as **EAS build environment variables**. Restrict the Android key to `com.towber.motorist` and the EAS signing certificate SHA-1; restrict the iOS key to bundle ID `com.towber.motorist`. The app needs the Maps SDKs enabled in Google Cloud. The keys are client-side native configuration, not server secrets; never commit actual keys.
+
+Set these app environment variables in the Expo project’s EAS environment:
+
+```text
+EXPO_PUBLIC_API_URL=https://<your-railway-service>.up.railway.app
+EXPO_PUBLIC_SUPABASE_URL=https://<your-project-ref>.supabase.co
+EXPO_PUBLIC_SUPABASE_ANON_KEY=<your-supabase-anon-key>
+GOOGLE_MAPS_ANDROID_API_KEY=<restricted-android-key>
+GOOGLE_MAPS_IOS_API_KEY=<restricted-ios-key>
+```
+
+Connect the local project to an Expo account once, then build in Expo’s cloud:
+
+```bash
+npx eas-cli@latest login
+npx eas-cli@latest init
+npx eas-cli@latest build --platform android --profile development
+```
+
+Use `--profile preview` for an installable Android APK, or `--platform all --profile production` for store-ready binaries. The first EAS build requires an Expo account/project and configured environment variables. Native modules such as Maps require a development/preview/production build; Expo Go alone is not the final test binary.
+
+> This workflow does not require Node.js or a native compiler to run on your phone. Edit on the phone in GitHub or a code editor; Railway runs the API and EAS builds the app in the cloud.
+
+## 4. Checks
+
+```bash
+cd mobile
+npm ci
+npm run typecheck
+npx expo install --check
+npx expo config --json
+```
+
+## Current scope
+
+The app contains the motorist map, nearby fleet cards, indicative pricing, and request submission. The authenticated API accepts fleet GPS pings; fleet dispatch/acceptance UI, request-status tracking UI, real road routing, and destination autocomplete remain future work. The current price range is an indicative calculation from each company’s lowest active rate card and is not a final quote.

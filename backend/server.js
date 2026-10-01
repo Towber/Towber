@@ -42,7 +42,7 @@ const requestBody = z.object({
 // ---- Helpers ----
 const ewkt = (p) => `SRID=4326;POINT(${p.lng} ${p.lat})`;
 
-// Tolerant mapper: adjust once you confirm the RPC's actual column names.
+// Maps the stable get_nearby_vehicles RPC column contract into the mobile API.
 function normalizeVehicle(r) {
   const distanceKm = r.distance_km ?? (r.distance_meters != null ? r.distance_meters / 1000 : null);
   return {
@@ -113,7 +113,7 @@ app.patch('/api/vehicles/:id/location', requireUser, wrap(async (req, res) => {
   if (!id.success) return res.status(400).json({ error: 'Invalid vehicle id' });
   const body = parse(locationBody, req.body, res); if (!body) return;
 
-  // Requires towing_companies.owner_user_id (added by supabase/get_nearby_vehicles.sql).
+  // Fleet ownership is enforced against towing_companies.owner_user_id.
   const { data: v, error: vErr } = await supabase
     .from('vehicles')
     .select('id, is_active, towing_companies!inner(owner_user_id)')
