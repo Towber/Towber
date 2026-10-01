@@ -5,6 +5,7 @@ const config: ExpoConfig = {
   slug: 'towber-ralph',
   scheme: 'towber',
   version: '1.0.0',
+  icon: './assets/icon.png',
   orientation: 'portrait',
   userInterfaceStyle: 'dark',
   runtimeVersion: { policy: 'fingerprint' },
@@ -23,6 +24,10 @@ const config: ExpoConfig = {
   },
   android: {
     package: 'com.towber.motorist',
+    adaptiveIcon: {
+      foregroundImage: './assets/adaptive-icon.png',
+      backgroundColor: '#ffffff',
+    },
     permissions: ['ACCESS_COARSE_LOCATION', 'ACCESS_FINE_LOCATION'],
     config: {
       googleMaps: {
@@ -34,6 +39,14 @@ const config: ExpoConfig = {
     'expo-router',
     'expo-font',
     'expo-updates',
+    [
+      'expo-splash-screen',
+      {
+        image: './assets/splash.png',
+        resizeMode: 'contain',
+        backgroundColor: '#ffffff',
+      },
+    ],
     [
       'expo-location',
       {
