@@ -23,7 +23,7 @@ towber/
    npx supabase db push
    ```
 
-   The migrations create the live-compatible `towing_companies`, `vehicles`, `rate_cards`, and `tow_requests` schema; PostGIS geography columns and indexes; owner/request read policies; and the API-only `get_nearby_vehicles` RPC. The migration set includes the recorded RPC migration so local and remote history can be reconciled.
+   The migrations create or extend the live-compatible `towing_companies`, `vehicles`, `rate_cards`, and `tow_requests` schema; PostGIS geography columns and indexes; owner/request read policies; the API-only nearby/fare RPCs; private driver-location broadcasts; driver verification metadata; and a private Storage bucket. Review the migration history before applying it to an existing project.
 3. The schema migration does not seed business data. Use existing verified fleet records in a linked project, or add approved companies, active vehicles, and rate cards before testing search. Do not mark unverified real companies as verified just to populate the map.
 
 The live request columns are `user_id`, `selected_company_id`, `assigned_vehicle_id`, `pickup_location`, `dropoff_location`, `estimated_distance_km`, `estimated_price_min`, `estimated_price_max`, and `status`. The backend uses this deployed contract.
@@ -80,7 +80,14 @@ Use `--profile preview` for an installable Android APK, or `--platform all --pro
 
 > This workflow does not require Node.js or a native compiler to run on your phone. Edit on the phone in GitHub or a code editor; Railway runs the API and EAS builds the app in the cloud.
 
-## 4. Checks
+## 4. Driver location, verification, and fares
+
+- Driver GPS uses `PATCH /api/vehicles/:id/location`. The API validates the user's Supabase JWT; the database accepts only the fleet owner or an actively assigned driver. A PostGIS trigger stores the latest fix, updates `vehicles.current_location`, and sends a minimal private Broadcast to each active `tow-request:<request-id>` topic. The motorist app subscribes only after request creation; it no longer joins a public fleet-wide channel.
+- `mobile/src/driverLocation.ts` exposes foreground driver GPS streaming. Android requests a 1-second interval; operating systems may throttle updates, and background tracking is not enabled in this first implementation. Only authorized request participants can join a private topic. In Supabase Realtime settings, disable **Allow public access** so private-channel RLS is enforced.
+- The `driver-verification-private` bucket is private, limits files to 10 MiB, and permits PDF/JPEG/PNG. `driver_verification_documents` stores PDP and vehicle licensing-disc metadata, expiry dates, and review status. Upload paths start with the submitting user's UUID. The mobile app has not yet added a document-picker/review screen.
+- `tow_service_classes` maps vehicles to Light Tow, Heavy Duty, or Flatbed. `tow_fare_rates` supports company-specific, effective-dated ZAR call-out, per-kilometre, and minimum rates. No new tariff amounts are seeded. Until a class-specific tariff is configured, the fare RPC falls back to that company's existing ZAR `rate_cards`; if neither exists, that vehicle is not quoted. `POST /api/requests` recalculates the quote server-side and snapshots the ZAR components on the request. The estimate uses the app's straight-line × 1.3 distance until road routing is added.
+
+## 5. Checks
 
 ```bash
 cd mobile
@@ -90,6 +97,6 @@ npx expo install --check
 npx expo config --json
 ```
 
-## Current scope
+## 6. Current scope
 
-The app contains the motorist map, nearby fleet cards, indicative pricing, and request submission. The authenticated API accepts fleet GPS pings; fleet dispatch/acceptance UI, request-status tracking UI, real road routing, and destination autocomplete remain future work. The current price range is an indicative calculation from each company’s lowest active rate card and is not a final quote.
+The app contains the motorist map, nearby fleet cards, ZAR quote display, request submission, and private live-location tracking for the active request. The API accepts authorized driver GPS pings. Fleet dispatch/acceptance UI, verification-document upload/review UI, driver background location, request-status tracking, real road routing, and destination autocomplete remain future work. A fare quote is an estimate; the operator may confirm a different final price.

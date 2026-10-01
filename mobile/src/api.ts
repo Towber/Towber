@@ -26,7 +26,16 @@ export type Truck = {
   priceMax: number;
 };
 
-// Motorists sign in anonymously so requests are tied to a real auth user.
+export type DriverLocation = LatLng & {
+  vehicleId: string;
+  heading: number | null;
+  speedMps: number | null;
+  recordedAt?: string;
+};
+
+export type LocationChannelStatus = 'connecting' | 'connected' | 'error';
+
+// Motorists sign in anonymously so requests are tied to an auth user.
 // Enable "Anonymous sign-ins" in Supabase > Authentication > Providers.
 async function token() {
   const { data } = await supabase.auth.getSession();
@@ -51,15 +60,51 @@ export const fetchNearby = (p: LatLng, distanceKm: number) =>
   ).then((r) => r.vehicles);
 
 export const createRequest = (b: { pickup: LatLng; dropoff: LatLng; vehicleId: string; tripDistanceKm: number }) =>
-  call<{ request: { id: string; status: string } }>('/api/requests', { method: 'POST', body: JSON.stringify(b) }, true);
+  call<{ request: { id: string; status: string; estimated_price_min: number; estimated_price_max: number } }>('/api/requests', { method: 'POST', body: JSON.stringify(b) }, true);
 
-// Live positions broadcast by the API whenever a driver pings their location.
-export function subscribeFleet(onMove: (m: { vehicleId: string; lat: number; lng: number }) => void) {
-  const ch = supabase
-    .channel('fleet')
-    .on('broadcast', { event: 'position' }, ({ payload }) => onMove(payload))
-    .subscribe();
-  return () => { supabase.removeChannel(ch); };
+export function sendDriverLocation(vehicleId: string, position: DriverLocation) {
+  return call<void>(`/api/vehicles/${encodeURIComponent(vehicleId)}/location`, {
+    method: 'PATCH',
+    body: JSON.stringify({
+      lat: position.lat,
+      lng: position.lng,
+      heading: position.heading,
+      speedMps: position.speedMps,
+    }),
+  }, true);
+}
+
+// Request-specific private topics prevent the old public "fleet" channel from
+// exposing every operator's location to every app session.
+export async function subscribeRequestDriverLocation(
+  requestId: string,
+  onMove: (location: DriverLocation) => void,
+  onStatus?: (status: LocationChannelStatus) => void,
+) {
+  await token();
+  await supabase.realtime.setAuth();
+
+  const channel = supabase
+    .channel(`tow-request:${requestId}`, { config: { private: true } })
+    .on('broadcast', { event: 'driver_location' }, ({ payload }) => {
+      const p = payload as Partial<DriverLocation> | null;
+      if (!p || typeof p.vehicleId !== 'string' || !Number.isFinite(p.lat) || !Number.isFinite(p.lng)) return;
+      onMove({
+        vehicleId: p.vehicleId,
+        lat: Number(p.lat),
+        lng: Number(p.lng),
+        heading: typeof p.heading === 'number' ? p.heading : null,
+        speedMps: typeof p.speedMps === 'number' ? p.speedMps : null,
+        recordedAt: typeof p.recordedAt === 'string' ? p.recordedAt : undefined,
+      });
+    })
+    .subscribe((status) => {
+      if (status === 'SUBSCRIBED') onStatus?.('connected');
+      else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED') onStatus?.('error');
+      else onStatus?.('connecting');
+    });
+
+  return () => { void supabase.removeChannel(channel); };
 }
 
 // Straight-line distance x 1.3 as a road-distance stand-in.

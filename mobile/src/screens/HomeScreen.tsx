@@ -9,7 +9,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { colors, darkMapStyle, font, radius, zarRange } from '../theme';
-import { createRequest, fetchNearby, LatLng, roadKm, subscribeFleet, Truck } from '../api';
+import { createRequest, fetchNearby, LatLng, roadKm, subscribeRequestDriverLocation, Truck } from '../api';
 import { SearchBar } from '../components/SearchBar';
 import { TruckCard, TruckCardSkeleton, CARD_WIDTH } from '../components/TruckCard';
 import { TruckMarker } from '../components/TruckMarker';
@@ -17,6 +17,8 @@ import { TruckMarker } from '../components/TruckMarker';
 // Johannesburg CBD fallback if location permission is denied
 const FALLBACK: LatLng = { lat: -26.2041, lng: 28.0473 };
 const DEFAULT_TRIP_KM = 10;
+
+type TrackingState = 'idle' | 'connecting' | 'connected' | 'error';
 
 const Glass = ({ style }: { style?: any }) => (
   <View style={[style, { overflow: 'hidden', borderTopLeftRadius: radius.sheet, borderTopRightRadius: radius.sheet }]}>
@@ -35,6 +37,8 @@ export default function HomeScreen() {
   const [loading, setLoading] = useState(true);
   const [searching, setSearching] = useState(false);
   const [requesting, setRequesting] = useState(false);
+  const [activeRequestId, setActiveRequestId] = useState<string | null>(null);
+  const [trackingState, setTrackingState] = useState<TrackingState>('idle');
 
   const tripKm = useMemo(() => (me && dest ? roadKm(me, dest) : DEFAULT_TRIP_KM), [me, dest]);
   const selected = trucks.find((t) => t.vehicleId === selectedId) ?? null;
@@ -49,7 +53,7 @@ export default function HomeScreen() {
     })().catch(() => setMe(FALLBACK));
   }, []);
 
-  // 2) Load nearby trucks + prices, refresh every 30s (prices and ETAs drift as trucks move)
+  // 2) Load nearby trucks + dynamic ZAR quotes, refresh every 30s.
   const load = useCallback(async () => {
     if (!me) return;
     try {
@@ -67,15 +71,42 @@ export default function HomeScreen() {
     return () => clearInterval(id);
   }, [load]);
 
-  // 3) Live positions between refreshes
-  useEffect(
-    () => subscribeFleet((m) =>
-      setTrucks((prev) => prev.map((t) => (t.vehicleId === m.vehicleId ? { ...t, lat: m.lat, lng: m.lng } : t))),
-    ),
-    [],
-  );
+  // 3) Subscribe only to the active request's private topic; never stream the whole fleet.
+  useEffect(() => {
+    if (!activeRequestId) {
+      setTrackingState('idle');
+      return;
+    }
 
-  // Frame the map when we know where the user is / where they're going
+    let mounted = true;
+    let unsubscribe: (() => void) | undefined;
+    setTrackingState('connecting');
+    subscribeRequestDriverLocation(
+      activeRequestId,
+      (location) => {
+        setTrucks((previous) => previous.map((truck) => (
+          truck.vehicleId === location.vehicleId
+            ? { ...truck, lat: location.lat, lng: location.lng }
+            : truck
+        )));
+      },
+      (status) => {
+        if (mounted) setTrackingState(status);
+      },
+    )
+      .then((stop) => {
+        if (mounted) unsubscribe = stop;
+        else stop();
+      })
+      .catch(() => { if (mounted) setTrackingState('error'); });
+
+    return () => {
+      mounted = false;
+      unsubscribe?.();
+    };
+  }, [activeRequestId]);
+
+  // Frame the map when we know where the user is / where they're going.
   useEffect(() => {
     if (!me) return;
     const pts = dest ? [me, dest] : [me];
@@ -101,17 +132,22 @@ export default function HomeScreen() {
   };
 
   const pick = (t: Truck) => {
+    if (activeRequestId) return;
     Haptics.selectionAsync();
     setSelectedId(t.vehicleId);
   };
 
   const request = async () => {
-    if (!me || !dest || !selected) return;
+    if (!me || !dest || !selected || activeRequestId) return;
     setRequesting(true);
     try {
-      const { request } = await createRequest({ pickup: me, dropoff: dest, vehicleId: selected.vehicleId, tripDistanceKm: tripKm });
+      const { request: created } = await createRequest({ pickup: me, dropoff: dest, vehicleId: selected.vehicleId, tripDistanceKm: tripKm });
+      setActiveRequestId(created.id);
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      Alert.alert('Request sent', `${selected.companyName} has been notified. Reference ${request.id.slice(0, 8)}.`);
+      Alert.alert(
+        'Request sent',
+        `${selected.companyName} has been notified. Reference ${created.id.slice(0, 8)}. Driver GPS updates will appear here when the driver comes online.`,
+      );
     } catch (e: any) {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
       Alert.alert('Request failed', e.message);
@@ -121,6 +157,11 @@ export default function HomeScreen() {
   };
 
   const needsDest = !dest;
+  const trackingCopy: Record<Exclude<TrackingState, 'idle'>, string> = {
+    connecting: 'Connecting to private driver tracking…',
+    connected: 'Private tracking connected · waiting for a GPS update',
+    error: 'Tracking connection interrupted · reconnecting',
+  };
 
   return (
     <View style={s.root}>
@@ -162,9 +203,10 @@ export default function HomeScreen() {
       <BottomSheet snapPoints={[230, '55%']} index={0} backgroundComponent={Glass} handleIndicatorStyle={{ backgroundColor: colors.textMuted, width: 40 }}>
         <BottomSheetView style={s.sheet}>
           <View style={s.head}>
-            <Text style={s.title}>Nearby tow trucks</Text>
+            <Text style={s.title}>{activeRequestId ? 'Your tow request' : 'Nearby tow trucks'}</Text>
             {!loading && <Text style={s.count}>{trucks.length} available</Text>}
           </View>
+          {activeRequestId && <Text style={s.tracking}>{trackingCopy[trackingState === 'idle' ? 'connecting' : trackingState]}</Text>}
 
           {loading ? (
             <View style={{ flexDirection: 'row', paddingHorizontal: 16 }}><TruckCardSkeleton /><TruckCardSkeleton /></View>
@@ -182,12 +224,13 @@ export default function HomeScreen() {
 
           <Pressable
             onPress={request}
-            disabled={!selected || needsDest || requesting}
+            disabled={!selected || needsDest || requesting || !!activeRequestId}
             accessibilityRole="button"
-            style={[s.cta, (!selected || needsDest || requesting) && s.ctaOff, { marginBottom: bottom + 8 }]}
+            style={[s.cta, (!selected || needsDest || requesting || !!activeRequestId) && s.ctaOff, { marginBottom: bottom + 8 }]}
           >
             <Text style={s.ctaText}>
-              {needsDest ? 'Enter a destination for your price'
+              {activeRequestId ? 'Tow requested · tracking this driver'
+                : needsDest ? 'Enter a destination for your price'
                 : !selected ? 'Choose a truck'
                 : requesting ? 'Sending request…'
                 : `Request ${selected.companyName}  ·  ${zarRange(selected.priceMin, selected.priceMax)}`}
@@ -205,6 +248,7 @@ const s = StyleSheet.create({
   head: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'baseline', paddingHorizontal: 20 },
   title: { color: colors.text, fontFamily: font.bold, fontSize: 18 },
   count: { color: colors.textMuted, fontFamily: font.medium, fontSize: 13 },
+  tracking: { color: colors.route, fontFamily: font.medium, fontSize: 12, paddingHorizontal: 20 },
   empty: { color: colors.textMuted, fontFamily: font.medium, fontSize: 14, paddingHorizontal: 20, lineHeight: 20 },
   cta: { marginHorizontal: 16, height: 54, borderRadius: 16, backgroundColor: colors.go, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 12 },
   ctaOff: { backgroundColor: colors.surfaceRaised },
