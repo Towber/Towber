@@ -7,6 +7,12 @@ const config: ExpoConfig = {
   version: '1.0.0',
   orientation: 'portrait',
   userInterfaceStyle: 'dark',
+  runtimeVersion: { policy: 'fingerprint' },
+  updates: {
+    url: 'https://u.expo.dev/3825fcde-0fa5-4f65-b3f6-e0aa5edae8d2',
+    checkAutomatically: 'ON_LOAD',
+    fallbackToCacheTimeout: 0,
+  },
   ios: {
     bundleIdentifier: 'com.towber.motorist',
     supportsTablet: true,
@@ -21,6 +27,7 @@ const config: ExpoConfig = {
   },
   plugins: [
     'expo-font',
+    'expo-updates',
     [
       'expo-location',
       {

@@ -90,14 +90,24 @@ Use `--profile preview` for an installable Android APK, or `--platform all --pro
 
 > This workflow does not require Node.js or a native compiler to run on your phone. Edit on the phone in GitHub or a code editor; Railway runs the API and EAS builds the app in the cloud.
 
-## 4. Driver location, verification, and fares
+## 4. OTA updates
+
+The app is configured for EAS Update with an automatic **fingerprint runtime version**, separate `development`, `preview`, and `production` channels, and matching EAS environments. Fingerprinting changes the runtime when native code/config changes, preventing an incompatible JavaScript bundle from being sent to that binary.
+
+**A new OTA-enabled APK is required once.** The preview APK currently building from an older commit does not contain `expo-updates` or these channel settings and cannot receive EAS Updates. After this setup is merged, create and install a fresh `preview` APK. Later JavaScript/TypeScript and bundled-asset changes can be published without another APK. Changes to native modules, Expo plugins, permissions, app configuration, or the Expo SDK still require a new EAS build.
+
+To publish from a phone, open the [EAS OTA Update workflow](https://github.com/Towber/Towber/actions/workflows/eas-update.yml), choose **Run workflow**, select `preview`, and enter a release message. Production publishing is limited to the `main` branch. The workflow uses the existing `EXPO_TOKEN` repository secret and the matching EAS environment; ensure `EXPO_PUBLIC_API_URL`, `EXPO_PUBLIC_SUPABASE_URL`, `EXPO_PUBLIC_SUPABASE_ANON_KEY`, and the client-side Maps keys are configured in both the EAS `preview` and `production` environments. Do not put server-only credentials in the app.
+
+Release/preview builds check for updates when launched. They download a compatible update in the background and apply it after a restart; this is not guaranteed to finish in under 10 seconds or to replace code while the app is open. Force-close and reopen the app (up to twice) to test a published update. This repository configures the publisher but does not publish an update automatically on every Git push.
+
+## 5. Driver location, verification, and fares
 
 - Driver GPS uses `PATCH /api/vehicles/:id/location`. The API validates the user's Supabase JWT; the database accepts only the fleet owner or an actively assigned driver. A PostGIS trigger stores the latest fix, updates `vehicles.current_location`, and sends a minimal private Broadcast to each active `tow-request:<request-id>` topic. The motorist app subscribes only after request creation; it no longer joins a public fleet-wide channel.
 - `mobile/src/driverLocation.ts` exposes foreground driver GPS streaming. Android requests a 1-second interval; operating systems may throttle updates, and background tracking is not enabled in this first implementation. Only authorized request participants can join a private topic. In Supabase Realtime settings, disable **Allow public access** so private-channel RLS is enforced.
 - The `driver-verification-private` bucket is private, limits files to 10 MiB, and permits PDF/JPEG/PNG. `driver_verification_documents` stores PDP and vehicle licensing-disc metadata, expiry dates, and review status. Upload paths start with the submitting user's UUID. The mobile app has not yet added a document-picker/review screen.
 - `tow_service_classes` maps vehicles to Light Tow, Heavy Duty, or Flatbed. `tow_fare_rates` supports company-specific, effective-dated ZAR call-out, per-kilometre, and minimum rates. No new tariff amounts are seeded. Until a class-specific tariff is configured, the fare RPC falls back to that company's existing ZAR `rate_cards`; if neither exists, that vehicle is not quoted. `POST /api/requests` recalculates the quote server-side and snapshots the ZAR components on the request. The estimate uses the app's straight-line × 1.3 distance until road routing is added.
 
-## 5. Checks
+## 6. Checks
 
 ```bash
 cd mobile
