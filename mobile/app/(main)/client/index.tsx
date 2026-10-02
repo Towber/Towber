@@ -9,7 +9,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { colors, darkMapStyle, font, radius, zarRange } from '../../../src/theme';
-import { type BreakdownType, createRequest, fetchNearby, fetchPlaceSuggestions, fetchRoadRoute, type LatLng, type PlaceSuggestion, type RoadRoute, roadKm, subscribeRequestDriverLocation, type Truck } from '../../../src/api';
+import { supabase, type BreakdownType, createRequest, fetchNearby, fetchPlaceSuggestions, fetchRoadRoute, type LatLng, type PlaceSuggestion, type RoadRoute, roadKm, subscribeRequestDriverLocation, type Truck } from '../../../src/api';
 import { SearchBar } from '../../../src/components/SearchBar';
 import { TruckCard, TruckCardSkeleton, CARD_WIDTH } from '../../../src/components/TruckCard';
 import { TruckMarker } from '../../../src/components/TruckMarker';
@@ -56,6 +56,11 @@ export default function HomeScreen() {
 
   const tripKm = useMemo(() => route?.distanceKm ?? (me && dest ? roadKm(me, dest) : DEFAULT_TRIP_KM), [me, dest, route]);
   const selected = trucks.find((t) => t.vehicleId === selectedId) ?? null;
+
+  const switchAccount = async () => {
+    const { error } = await supabase.auth.signOut();
+    if (error) Alert.alert('Could not sign out', error.message);
+  };
 
 // Ask for permission when the client route mounts; the resulting GPS fix is
 // used both to center the map and as the pickup sent with a tow request.
@@ -280,7 +285,12 @@ export default function HomeScreen() {
         <BottomSheetView style={s.sheet}>
           <View style={s.head}>
             <Text style={s.title}>{activeRequestId ? 'Your tow request' : 'Nearby tow trucks'}</Text>
-            {!loading && <Text style={s.count}>{trucks.length} available</Text>}
+            <View style={s.headActions}>
+              {!loading && <Text style={s.count}>{trucks.length} available</Text>}
+              <Pressable accessibilityRole="button" accessibilityLabel="Sign out and switch account" onPress={() => { void switchAccount(); }} hitSlop={10}>
+                <Ionicons name="log-out-outline" size={18} color={colors.textMuted} />
+              </Pressable>
+            </View>
           </View>
           <View style={s.serviceSection}>
             <Text style={s.servicePrompt}>Breakdown service</Text>
@@ -343,6 +353,7 @@ const s = StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.bg },
   sheet: { gap: 14, paddingBottom: 8 },
   head: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'baseline', paddingHorizontal: 20 },
+  headActions: { flexDirection: 'row', alignItems: 'center', gap: 12 },
   title: { color: colors.text, fontFamily: font.bold, fontSize: 18 },
   count: { color: colors.textMuted, fontFamily: font.medium, fontSize: 13 },
   serviceSection: { gap: 8 },

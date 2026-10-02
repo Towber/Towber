@@ -7,7 +7,7 @@ const API = process.env.EXPO_PUBLIC_API_URL!;
 export const supabase = createClient(
   process.env.EXPO_PUBLIC_SUPABASE_URL!,
   process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY!,
-  { auth: { storage: AsyncStorage, persistSession: true, autoRefreshToken: true, detectSessionInUrl: false } },
+  { auth: { storage: AsyncStorage, persistSession: true, autoRefreshToken: true, detectSessionInUrl: false, flowType: 'pkce' } },
 );
 
 export type LatLng = { lat: number; lng: number };
@@ -49,8 +49,7 @@ export type RoadRoute = {
   coordinates: LatLng[];
 };
 
-// Motorists sign in anonymously so requests are tied to an auth user.
-// Enable "Anonymous sign-ins" in Supabase > Authentication > Providers.
+// Drivers use invited email links. Motorists may also use a temporary guest session.
 async function token() {
   const { data } = await supabase.auth.getSession();
   if (data.session) return data.session.access_token;

@@ -14,7 +14,7 @@ towber/
 
 ## 1. Supabase setup
 
-1. Create a Supabase project and enable **Anonymous sign-ins** under Authentication → Sign In / Providers. The motorist app uses anonymous Auth; it does not get the server service-role key.
+1. The client can use a temporary anonymous Auth session; drivers use invite-only email magic links. Add `towber://auth/callback` to **Authentication → URL Configuration → Additional Redirect URLs**. Enable **Anonymous Sign-Ins** under Authentication → Sign In / Providers only if guest access is wanted. The mobile app never receives the server service-role key. See [the test-driver setup guide](docs/test-driver-auth.md).
 2. Install the Supabase CLI, sign in, link the project, and apply migrations:
 
    ```bash
@@ -24,14 +24,7 @@ towber/
 
    For a **fresh project**, run `npx supabase db push` after linking.
 
-   **Existing linked Towber project only:** the remote history currently records `20260930222503`, while the earlier idempotent baseline `20260930222400` is not recorded. The four baseline tables already exist and have RLS enabled, so after verifying that remains true, reconcile the history before pushing:
-
-   ```bash
-   npx supabase migration repair 20260930222400 --status applied
-   npx supabase db push
-   ```
-
-   `migration repair` changes only Supabase's history table; it does not run SQL. Do not use this repair on a fresh project. The normal ordered migrations should run there.
+   **Existing linked Towber production project:** its migration history has already been reconciled and all versioned migrations through `20261002000002` are applied by the manually dispatched GitHub Actions workflow. Do not rerun the Towber-specific baseline repair. For a different existing project, inspect its tables and migration history before applying or repairing anything. `migration repair` changes only Supabase's history table; it does not run SQL, so use it only after verifying the actual baseline state.
 
    The migrations create or extend the live-compatible `towing_companies`, `vehicles`, `rate_cards`, and `tow_requests` schema; PostGIS geography columns and indexes; owner/request read policies; the API-only nearby/fare RPCs; private driver-location broadcasts; driver verification metadata; app profiles and roles; breakdown-service request fields; driver job alerts; and a private Storage bucket. Review the migration history before applying it to an existing project.
 3. The schema migration does not seed business data. Use existing verified fleet records in a linked project, or add approved companies, active vehicles, and rate cards before testing search. Do not mark unverified real companies as verified just to populate the map.
@@ -113,9 +106,9 @@ Release/preview builds check for updates when launched. They download a compatib
 
 ## 6. Expo Router roles
 
-`mobile/app/_layout.tsx` restores/creates a Supabase session, reads the caller's `user_profiles.role`, and redirects to `/(main)/client` or `/(main)/driver`. New Auth accounts receive the least-privileged `client` role. The role table is read-only to the signed-in user; a trusted fleet administrator must promote an assigned driver, for example with `UPDATE public.user_profiles SET role = 'driver' WHERE user_id = '<auth-user-uuid>';`. The mobile app has no driver sign-in screen yet, so driver routing requires an already-authenticated driver session.
+`mobile/app/_layout.tsx` restores a Supabase session, reads the caller's `user_profiles.role`, and redirects to `/(main)/client` or `/(main)/driver`. Drivers sign in using an invited email magic link; uninvited email addresses cannot create accounts from the app. Clients can explicitly continue with an anonymous guest session when that provider is enabled. New Auth accounts receive the least-privileged `client` role. The role column is not writable by signed-in users; a trusted administrator must promote a driver, as shown in [the test-driver setup guide](docs/test-driver-auth.md).
 
-The client route provides Google Places autocomplete for South African destinations, renders a traffic-aware road route, and uses its routed distance for the ZAR quote. It keeps the service choices Flatbed, Jumpstart, and Lockout; the selection is sent with and stored on the request. The driver route reads the active vehicle assignment, streams foreground location while Online, and subscribes to private Realtime alerts for pending requests assigned to that vehicle. The Online/Offline switch currently controls this app's GPS stream; fleet-wide availability persistence and accepting/transitioning jobs are not yet implemented. Apply the new Supabase migration before testing these role/profile and driver-alert paths. It has not been applied to the linked project.
+The client route provides Google Places autocomplete for South African destinations, renders a traffic-aware road route, and uses its routed distance for the ZAR quote. It keeps the service choices Flatbed, Jumpstart, and Lockout; the selection is sent with and stored on the request. The driver route reads the active vehicle assignment, streams foreground location while Online, and subscribes to private Realtime alerts for pending requests assigned to that vehicle. The Online/Offline switch currently controls this app's GPS stream; fleet-wide availability persistence and accepting/transitioning jobs are not yet implemented.
 
 ## 7. Checks
 
@@ -129,4 +122,4 @@ npx expo config --json
 
 ## 8. Current scope
 
-The app contains role-gated client and driver routes, the motorist map, nearby fleet cards, breakdown service selection, ZAR quote display, authenticated request submission, Google Places autocomplete, traffic-aware road routes, private live-location tracking, a foreground driver Online/Offline GPS toggle, and incoming-job alerts. Job acceptance/dispatch and persisted availability, verification-document upload/review UI, driver background location, and driver authentication UI remain future work. A fare quote is an estimate; the operator may confirm a different final price.
+The app contains role-gated client and driver routes, invite-only email magic-link authentication, an optional anonymous client path, the motorist map, nearby fleet cards, breakdown service selection, ZAR quote display, authenticated request submission, Google Places autocomplete, traffic-aware road routes, private live-location tracking, a foreground driver Online/Offline GPS toggle, and incoming-job alerts. Job acceptance/dispatch and persisted availability, verification-document upload/review UI, and driver background location remain future work. A fare quote is an estimate; the operator may confirm a different final price.

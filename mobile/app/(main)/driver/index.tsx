@@ -144,6 +144,11 @@ export default function DriverRoute() {
     setOnline(value);
   };
 
+  const switchAccount = async () => {
+    const { error } = await supabase.auth.signOut();
+    if (error) Alert.alert('Could not sign out', error.message);
+  };
+
   return (
     <View style={styles.root}>
       <MapView
@@ -180,6 +185,10 @@ export default function DriverRoute() {
             </View>
           )}
         </View>
+        <Pressable accessibilityRole="button" accessibilityLabel="Sign out and switch account" onPress={() => { void switchAccount(); }} style={styles.signOutButton}>
+          <Ionicons name="log-out-outline" size={15} color={colors.textMuted} />
+          <Text style={styles.signOutText}>Switch account</Text>
+        </Pressable>
         {locationError && <View style={styles.errorCard}><Ionicons name="warning-outline" size={17} color={colors.warn} /><Text style={styles.errorText}>{locationError}</Text></View>}
         {online && <View style={styles.onlinePill}><View style={styles.onlineDot} /><Text style={styles.onlinePillText}>Sharing location · waiting for jobs</Text></View>}
         {!vehicleId && !assignmentLoading && (
@@ -222,6 +231,8 @@ const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.bg },
   overlay: { ...StyleSheet.absoluteFill, paddingHorizontal: 16, gap: 10 },
   statusCard: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 16, padding: 18, borderRadius: radius.card, backgroundColor: 'rgba(15,23,42,0.94)', borderWidth: 1, borderColor: colors.border },
+  signOutButton: { alignSelf: 'flex-end', flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 11, paddingVertical: 8, borderRadius: 12, backgroundColor: 'rgba(15,23,42,0.94)' },
+  signOutText: { color: colors.textMuted, fontFamily: font.semibold, fontSize: 12 },
   statusCopy: { flex: 1, gap: 4 },
   eyebrow: { color: colors.route, fontFamily: font.bold, fontSize: 10, letterSpacing: 1.4 },
   title: { color: colors.text, fontFamily: font.bold, fontSize: 19 },
