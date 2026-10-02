@@ -1,644 +1,210 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Alert, ActivityIndicator, FlatList, Linking, Modal, Pressable, StyleSheet, Switch, Text, View } from 'react-native';
-import MapView, { Marker, Polyline, PROVIDER_GOOGLE } from 'react-native-maps';
-import BottomSheet, { BottomSheetView } from '@gorhom/bottom-sheet';
+import React, { useEffect, useMemo, useState } from 'react';
+import { Alert, KeyboardAvoidingView, Linking, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
-import * as Haptics from 'expo-haptics';
-import * as Location from 'expo-location';
-import { Ionicons } from '@expo/vector-icons';
+import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { darkMapStyle, font, light as L, radius, zarRange } from '../../../src/theme';
-import { supabase, type BreakdownType, createRequest, fetchActiveRequest, fetchNearby, fetchPlaceSuggestions, fetchRoadRoute, getRequest, isActiveRequestStatus, isTerminalRequestStatus, transitionRequest, type LatLng, type PlaceSuggestion, type RoadRoute, roadKm, subscribeRequestDriverLocation, type RequestStatus, type Truck } from '../../../src/api';
-import { SearchBar } from '../../../src/components/SearchBar';
-import { TopBar, TOPBAR_HEIGHT } from '../../../src/components/TopBar';
-import { TruckCard, TruckCardSkeleton, CARD_WIDTH } from '../../../src/components/TruckCard';
-import { TruckMarker } from '../../../src/components/TruckMarker';
+import { fetchActiveRequest, supabase, type BreakdownType, type ServiceFor } from '../../../src/api';
+import { TopBar } from '../../../src/components/TopBar';
+import { SERVICES, getDraft, setDraft } from '../../../src/requestDraft';
+import { font, light as L } from '../../../src/theme';
 
-// Johannesburg CBD fallback if location permission is denied
-const FALLBACK: LatLng = { lat: -26.2041, lng: 28.0473 };
-const DEFAULT_TRIP_KM = 10;
-const newPlacesSessionToken = () => `towber-${Date.now()}-${Math.random().toString(36).slice(2)}`;
-const BREAKDOWN_SERVICES: { id: BreakdownType; label: string; icon: React.ComponentProps<typeof Ionicons>['name'] }[] = [
-  { id: 'flatbed', label: 'Flatbed', icon: 'car-outline' },
-  { id: 'jumpstart', label: 'Jumpstart', icon: 'flash-outline' },
-  { id: 'lockout', label: 'Lockout', icon: 'key-outline' },
+const COLORS: { name: string; hex: string }[] = [
+  { name: 'White', hex: '#FFFFFF' }, { name: 'Black', hex: '#111111' }, { name: 'Silver', hex: '#C0C4CC' },
+  { name: 'Grey', hex: '#6B7280' }, { name: 'Red', hex: '#DC2626' }, { name: 'Blue', hex: '#2563EB' },
+  { name: 'Green', hex: '#16A34A' }, { name: 'Other', hex: 'transparent' },
 ];
 
-type TrackingState = 'idle' | 'connecting' | 'connected' | 'error';
+export default function ServiceScreen() {
+  const router = useRouter();
+  const { bottom } = useSafeAreaInsets();
+  const saved = getDraft();
+  const [service, setService] = useState<BreakdownType | null>(saved?.breakdownType ?? null);
+  const [serviceFor, setServiceFor] = useState<ServiceFor>(saved?.serviceFor ?? 'self');
+  const [contactName, setContactName] = useState(saved?.contactName ?? '');
+  const [contactPhone, setContactPhone] = useState(saved?.contactPhone ?? '');
+  const [makeModel, setMakeModel] = useState(saved?.vehicleMakeModel ?? '');
+  const [color, setColor] = useState(saved?.vehicleColor ?? '');
+  const [registration, setRegistration] = useState(saved?.vehicleRegistration ?? '');
+  const [passengers, setPassengers] = useState(saved?.passengers ?? 1);
 
-const TIMELINE: { key: RequestStatus; label: string }[] = [
-  { key: 'pending', label: 'Sent' },
-  { key: 'accepted', label: 'Accepted' },
-  { key: 'en_route', label: 'En route' },
-  { key: 'arrived', label: 'Arrived' },
-  { key: 'completed', label: 'Done' },
-];
-const STATUS_TITLE: Record<RequestStatus, string> = {
-  pending: 'Finding your driver',
-  accepted: 'Driver found',
-  en_route: 'Driver en route',
-  arrived: 'Driver has arrived',
-  completed: 'Tow complete',
-  cancelled: 'Request cancelled',
-  declined: 'No truck available',
-  expired: 'No response from drivers',
-};
-const STATUS_COPY: Record<RequestStatus, string> = {
-  pending: 'Nearby trucks have been notified of your breakdown.',
-  accepted: 'Your driver is preparing to leave.',
-  en_route: 'Live GPS tracking is on — watch the truck approach.',
-  arrived: 'Your driver is at the pickup point.',
-  completed: 'Thanks for riding with Towber. Safe travels.',
-  cancelled: 'You cancelled this request. You can request a new tow anytime.',
-  declined: 'Every nearby truck was unavailable. Try again or pick another truck.',
-  expired: 'No driver responded in time. Try again with the nearest trucks.',
-};
+  // An in-flight request should always land on the live map, not a blank form.
+  useEffect(() => {
+    let mounted = true;
+    fetchActiveRequest()
+      .then((row) => { if (mounted && row) router.replace('/(main)/client/map'); })
+      .catch(() => { /* offline or none: stay on this screen */ });
+    return () => { mounted = false; };
+  }, [router]);
 
-// White Bolt-style bottom sheet.
-const Sheet = ({ style }: { style?: any }) => (
-  <View style={[style, { backgroundColor: L.surface, borderTopLeftRadius: radius.sheet, borderTopRightRadius: radius.sheet, elevation: 16, shadowColor: '#000000', shadowOpacity: 0.16, shadowRadius: 14, shadowOffset: { width: 0, height: -4 } }]} />
-);
+  const otherReady = serviceFor === 'self' || (contactName.trim().length > 1 && contactPhone.trim().length >= 7);
+  const canContinue = !!service && otherReady;
 
-export default function HomeScreen() {
-  const { top, bottom } = useSafeAreaInsets();
-  const map = useRef<MapView>(null);
-  const [me, setMe] = useState<LatLng | null>(null);
-  const [pickupLabel, setPickupLabel] = useState('Your location');
-  const [pickupSearchQuery, setPickupSearchQuery] = useState('');
-  const [pickupEditing, setPickupEditing] = useState(false);
-  const [searchMode, setSearchMode] = useState<'pickup' | 'destination'>('destination');
-  const [dest, setDest] = useState<LatLng | null>(null);
-  const [route, setRoute] = useState<RoadRoute | null>(null);
-  const [trucks, setTrucks] = useState<Truck[]>([]);
-  const [quoteDistanceKm, setQuoteDistanceKm] = useState<number | null>(null);
-  const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [searching, setSearching] = useState(false);
-  const [suggesting, setSuggesting] = useState(false);
-  const [searchQuery, setSearchQuery] = useState('');
-  const [placeSuggestions, setPlaceSuggestions] = useState<PlaceSuggestion[]>([]);
-  const [searchError, setSearchError] = useState<string | null>(null);
-  const placesSessionToken = useRef(newPlacesSessionToken());
-  const [requesting, setRequesting] = useState(false);
-  const [activeRequestId, setActiveRequestId] = useState<string | null>(null);
-  const [requestStatus, setRequestStatus] = useState<RequestStatus | null>(null);
-  const [requestExpiresAt, setRequestExpiresAt] = useState<string | null>(null);
-  const [requestCompany, setRequestCompany] = useState<string | null>(null);
-  const [cancelling, setCancelling] = useState(false);
-  const [clockMs, setClockMs] = useState(() => Date.now());
-  const [trackingState, setTrackingState] = useState<TrackingState>('idle');
-  const [breakdownType, setBreakdownType] = useState<BreakdownType>('flatbed');
-  const [drawerVisible, setDrawerVisible] = useState(false);
-  const [darkMapEnabled, setDarkMapEnabled] = useState(false);
+  const hint = useMemo(() => {
+    if (!service) return 'Choose a service to continue';
+    if (!otherReady) return "Add the other person's name and phone";
+    return 'Continue';
+  }, [service, otherReady]);
 
-  const tripKm = useMemo(() => route?.distanceKm ?? (me && dest ? roadKm(me, dest) : DEFAULT_TRIP_KM), [me, dest, route]);
-  const selected = trucks.find((t) => t.vehicleId === selectedId) ?? null;
+  const next = () => {
+    if (!service || !canContinue) return;
+    setDraft({
+      breakdownType: service,
+      serviceFor,
+      contactName: serviceFor === 'other' ? contactName.trim() : undefined,
+      contactPhone: serviceFor === 'other' ? contactPhone.trim() : undefined,
+      vehicleMakeModel: makeModel.trim() || undefined,
+      vehicleColor: color || undefined,
+      vehicleRegistration: registration.trim().toUpperCase() || undefined,
+      passengers,
+    });
+    router.push('/(main)/client/map');
+  };
 
-  const switchAccount = async () => {
+  const sos = () => { void Linking.openURL('tel:112').catch(() => Alert.alert('Unable to place call', 'Call emergency services at 112.')); };
+  const logout = async () => {
+    setDraft(null);
     const { error } = await supabase.auth.signOut();
     if (error) Alert.alert('Could not sign out', error.message);
   };
 
-// Ask for permission when the client route mounts; the resulting GPS fix is
-// used both to center the map and as the pickup sent with a tow request.
-  useEffect(() => {
-    (async () => {
-      const { status } = await Location.requestForegroundPermissionsAsync();
-      if (status !== 'granted') return setMe(FALLBACK);
-      const pos = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.High });
-      setMe({ lat: pos.coords.latitude, lng: pos.coords.longitude });
-    })().catch(() => setMe(FALLBACK));
-  }, []);
-
-  // Debounced Places (New) search, biased toward the motorist and restricted to South Africa.
-  useEffect(() => {
-    const query = (searchMode === 'pickup' ? pickupSearchQuery : searchQuery).trim();
-    if (!me || query.length < 3 || (searchMode === 'destination' && dest)) {
-      setPlaceSuggestions([]);
-      setSuggesting(false);
-      return;
-    }
-    let current = true;
-    const timer = setTimeout(() => {
-      setSuggesting(true);
-      fetchPlaceSuggestions(query, me, placesSessionToken.current)
-        .then((suggestions) => {
-          if (current) {
-            setPlaceSuggestions(suggestions);
-            setSearchError(null);
-          }
-        })
-        .catch((error: unknown) => {
-          if (current) {
-            setPlaceSuggestions([]);
-            setSearchError(error instanceof Error ? error.message : 'Address search is unavailable. Try again.');
-          }
-        })
-        .finally(() => { if (current) setSuggesting(false); });
-    }, 350);
-    return () => { current = false; clearTimeout(timer); };
-  }, [searchMode, pickupSearchQuery, searchQuery, me, dest]);
-
-  // 2) Load nearby trucks + dynamic ZAR quotes, refresh every 30s.
-  const load = useCallback(async () => {
-    if (!me) return;
-    try {
-      setTrucks(await fetchNearby(me, tripKm));
-      setQuoteDistanceKm(tripKm);
-    } catch (e: any) {
-      Alert.alert('Could not load tow trucks', e.message ?? 'Check your connection and try again.');
-    } finally {
-      setLoading(false);
-    }
-  }, [me, tripKm]);
-
-  useEffect(() => {
-    load();
-    const id = setInterval(load, 30_000);
-    return () => clearInterval(id);
-  }, [load]);
-
-  // 3) Subscribe only to the active request's private topic; never stream the whole fleet.
-  useEffect(() => {
-    if (!activeRequestId) {
-      setTrackingState('idle');
-      return;
-    }
-
-    let mounted = true;
-    let unsubscribe: (() => void) | undefined;
-    setTrackingState('connecting');
-    subscribeRequestDriverLocation(
-      activeRequestId,
-      (location) => {
-        setTrucks((previous) => previous.map((truck) => (
-          truck.vehicleId === location.vehicleId
-            ? { ...truck, lat: location.lat, lng: location.lng }
-            : truck
-        )));
-      },
-      (status) => {
-        if (mounted) setTrackingState(status);
-      },
-    )
-      .then((stop) => {
-        if (mounted) unsubscribe = stop;
-        else stop();
-      })
-      .catch(() => { if (mounted) setTrackingState('error'); });
-
-    return () => {
-      mounted = false;
-      unsubscribe?.();
-    };
-  }, [activeRequestId]);
-
-  // Resume an already-open request after an app restart, so the status panel
-  // survives navigation and redeploys.
-  useEffect(() => {
-    let mounted = true;
-    fetchActiveRequest()
-      .then((row) => {
-        if (!mounted || !row) return;
-        setActiveRequestId(row.id);
-        setRequestStatus(row.status);
-        setRequestExpiresAt(row.expires_at ?? null);
-        setRequestCompany(row.towing_companies?.company_name ?? null);
-      })
-      .catch(() => { /* No active request, or offline — start fresh. */ });
-    return () => { mounted = false; };
-  }, []);
-
-  // Poll the request's real status; stop once it reaches a terminal state.
-  useEffect(() => {
-    if (!activeRequestId) {
-      setRequestStatus(null);
-      setRequestExpiresAt(null);
-      return;
-    }
-    const terminal = !!requestStatus && isTerminalRequestStatus(requestStatus);
-    let stopped = false;
-    const refresh = () => {
-      getRequest(activeRequestId)
-        .then((row) => {
-          if (stopped) return;
-          setRequestStatus(row.status);
-          setRequestExpiresAt(row.expires_at ?? null);
-          if (row.towing_companies?.company_name) setRequestCompany(row.towing_companies.company_name);
-        })
-        .catch(() => { /* Keep the last known status until the next tick. */ });
-    };
-    refresh();
-    if (terminal) return () => { stopped = true; };
-    const timer = setInterval(refresh, 3000);
-    return () => { stopped = true; clearInterval(timer); };
-  }, [activeRequestId, requestStatus]);
-
-  // Offer countdown while the request is still pending.
-  useEffect(() => {
-    if (!activeRequestId || requestStatus !== 'pending') return;
-    setClockMs(Date.now());
-    const timer = setInterval(() => setClockMs(Date.now()), 1000);
-    return () => clearInterval(timer);
-  }, [activeRequestId, requestStatus]);
-
-  // Frame the map when we know where the user is / where they're going.
-  useEffect(() => {
-    if (!me) return;
-    const pts = dest ? [me, dest] : [me];
-    if (pts.length === 1) {
-      map.current?.animateToRegion({ latitude: me.lat, longitude: me.lng, latitudeDelta: 0.06, longitudeDelta: 0.06 }, 600);
-    } else {
-      map.current?.fitToCoordinates(pts.map((p) => ({ latitude: p.lat, longitude: p.lng })), {
-        edgePadding: { top: 280, bottom: 380, left: 60, right: 60 }, animated: true,
-      });
-    }
-  }, [me, dest]);
-
-  const changeDestinationQuery = (query: string) => {
-    setSearchMode('destination');
-    setSearchQuery(query);
-    setDest(null);
-    setRoute(null);
-    setSearchError(null);
-    setPlaceSuggestions([]);
-  };
-
-  const selectPlace = async (suggestion: PlaceSuggestion) => {
-    if (!me) return;
-    const selectingPickup = searchMode === 'pickup';
-    setPlaceSuggestions([]);
-    setSearchError(null);
-    setSearching(true);
-    const selectedSessionToken = placesSessionToken.current;
-    placesSessionToken.current = newPlacesSessionToken();
-    try {
-      const drivingRoute = await fetchRoadRoute(me, suggestion.placeId, selectedSessionToken);
-      if (selectingPickup) {
-        setMe(drivingRoute.destination);
-        setPickupLabel(drivingRoute.address || suggestion.description);
-        setPickupSearchQuery('');
-        setPickupEditing(false);
-        setSearchMode('destination');
-        setSearchQuery('');
-        setRoute(null);
-        setDest(null);
-        setSelectedId(null);
-      } else {
-        if (drivingRoute.coordinates.length < 2) throw new Error('No road route was returned. Choose another destination.');
-        setSearchQuery(suggestion.description);
-        setRoute(drivingRoute);
-        setDest(drivingRoute.destination);
-      }
-      Haptics.selectionAsync();
-    } catch (error: unknown) {
-      if (!selectingPickup) {
-        setDest(null);
-        setRoute(null);
-      }
-      setSearchError(error instanceof Error ? error.message : 'Could not build a driving route. Try another destination.');
-    } finally {
-      setSearching(false);
-    }
-  };
-
-  const pick = (t: Truck) => {
-    if (activeRequestId) return;
-    Haptics.selectionAsync();
-    setSelectedId(t.vehicleId);
-  };
-
-  // Request Tow is sent through the authenticated backend API, which writes to
-  // public.tow_requests and converts {lat, lng} into the PostGIS pickup point.
-  const request = async () => {
-    if (!me || !dest || !selected || activeRequestId) return;
-    setRequesting(true);
-    try {
-      const { request: created } = await createRequest({ pickup: me, dropoff: dest, vehicleId: selected.vehicleId, tripDistanceKm: tripKm, breakdownType });
-      setActiveRequestId(created.id);
-      setRequestStatus(created.status);
-      setRequestExpiresAt(created.expires_at ?? null);
-      setRequestCompany(selected.companyName);
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    } catch (e: any) {
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-      Alert.alert('Request failed', e.message);
-    } finally {
-      setRequesting(false);
-    }
-  };
-
-  // Cancelling is confirmed, then goes through the same state machine the
-  // drivers use, so the server owns the race between cancel and accept.
-  const cancelActiveRequest = () => {
-    if (!activeRequestId || cancelling) return;
-    Alert.alert('Cancel this tow request?', 'The assigned truck is released and you can request a new tow.', [
-      { text: 'Keep request', style: 'cancel' },
-      {
-        text: 'Cancel request',
-        style: 'destructive',
-        onPress: () => {
-          setCancelling(true);
-          transitionRequest(activeRequestId, 'cancel')
-            .then((row) => {
-              setRequestStatus(row.status);
-              setRequestExpiresAt(row.expires_at ?? null);
-              Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
-            })
-            .catch((error: unknown) => {
-              Alert.alert('Could not cancel', error instanceof Error ? error.message : 'Try again.');
-            })
-            .finally(() => setCancelling(false));
-        },
-      },
-    ]);
-  };
-
-  const resetRequest = () => {
-    setActiveRequestId(null);
-    setRequestStatus(null);
-    setRequestExpiresAt(null);
-    setRequestCompany(null);
-  };
-
-  const callEmergencyServices = () => {
-    setDrawerVisible(false);
-    void Linking.openURL('tel:112').catch(() => Alert.alert('Unable to place call', 'Call emergency services at 112.'));
-  };
-
-  const signOutFromDrawer = async () => {
-    setDrawerVisible(false);
-    await switchAccount();
-  };
-
-  const needsDest = !dest;
-  const quoteRefreshing = quoteDistanceKm !== tripKm;
-  const ctaDisabled = !selected || needsDest || requesting;
-  const trackingCopy: Record<Exclude<TrackingState, 'idle'>, string> = {
-    connecting: 'Connecting to private driver tracking…',
-    connected: 'Private tracking connected · waiting for a GPS update',
-    error: 'Tracking connection interrupted · reconnecting',
-  };
-  const activeStatus = !!requestStatus && isActiveRequestStatus(requestStatus);
-  const timelineIndex = requestStatus ? TIMELINE.findIndex((step) => step.key === requestStatus) : -1;
-  const pendingSecondsLeft = requestStatus === 'pending' && requestExpiresAt
-    ? Math.max(0, Math.ceil((new Date(requestExpiresAt).getTime() - clockMs) / 1000))
-    : 0;
-
   return (
     <View style={s.root}>
       <StatusBar style="light" />
-      <MapView
-        ref={map}
-        style={StyleSheet.absoluteFill}
-        provider={PROVIDER_GOOGLE}
-        customMapStyle={darkMapEnabled ? darkMapStyle : []}
-        userInterfaceStyle={darkMapEnabled ? 'dark' : 'light'}
-        showsUserLocation
-        showsMyLocationButton={false}
-        toolbarEnabled={false}
-        initialRegion={{ latitude: FALLBACK.lat, longitude: FALLBACK.lng, latitudeDelta: 0.2, longitudeDelta: 0.2 }}
-      >
-        {route && route.coordinates.length > 1 && (
-          <Polyline
-            coordinates={route.coordinates.map((point) => ({ latitude: point.lat, longitude: point.lng }))}
-            strokeColor={L.route} strokeWidth={5}
-          />
-        )}
-        {dest && <Marker coordinate={{ latitude: dest.lat, longitude: dest.lng }} pinColor={L.route} />}
-        {trucks.map((t) => (
-          <TruckMarker key={t.vehicleId} truck={t} selected={t.vehicleId === selectedId} onPress={() => pick(t)} />
-        ))}
-      </MapView>
+      <TopBar inline onSos={sos} onLogout={() => { void logout(); }} />
+      <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+        <ScrollView contentContainerStyle={s.content} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
+          <Text style={s.h1}>What do you need?</Text>
+          <Text style={s.sub}>Tell us what happened so we can send the right help.</Text>
 
-      <SearchBar
-        pickupLabel={me ? pickupLabel : 'Finding you…'}
-        pickupValue={pickupSearchQuery}
-        pickupEditing={pickupEditing}
-        activeSearch={searchMode}
-        busy={searching || suggesting}
-        suggestions={placeSuggestions}
-        searchError={searchError}
-        routeSummary={route ? `${route.distanceKm.toFixed(1)} km · ${route.durationMinutes ? `about ${route.durationMinutes} min` : 'ETA unavailable'}` : null}
-        onPickupFocus={() => {
-          setSearchMode('pickup');
-          if (!pickupEditing) {
-            setPickupEditing(true);
-            setPickupSearchQuery('');
-            setPlaceSuggestions([]);
-          }
-          setSearchError(null);
-        }}
-        onPickupQueryChange={(query) => {
-          setSearchMode('pickup');
-          setPickupSearchQuery(query);
-          setSearchError(null);
-        }}
-        onDestinationFocus={() => setSearchMode('destination')}
-        onQueryChange={changeDestinationQuery}
-        onSubmit={setSearchQuery}
-        onSelect={selectPlace}
-      />
-
-      <TopBar onMenu={() => setDrawerVisible(true)} onSos={callEmergencyServices} />
-
-      <Modal visible={drawerVisible} animationType="fade" statusBarTranslucent onRequestClose={() => setDrawerVisible(false)}>
-        <View style={s.menuRoot}>
-          <StatusBar style="light" />
-          <View style={[s.menuBar, { paddingTop: top, height: top + TOPBAR_HEIGHT }]}>
-            <Text style={s.menuBrand}>Towber</Text>
-            <Pressable accessibilityRole="button" accessibilityLabel="Close menu" onPress={() => setDrawerVisible(false)} hitSlop={10} style={s.menuClose}>
-              <Ionicons name="close" size={30} color={L.onHeader} />
-            </Pressable>
+          <View style={s.grid}>
+            {SERVICES.map((item) => {
+              const on = service === item.id;
+              return (
+                <Pressable
+                  key={item.id}
+                  accessibilityRole="button"
+                  accessibilityState={{ selected: on }}
+                  onPress={() => setService(item.id)}
+                  style={[s.tile, on && s.tileOn]}
+                >
+                  <View style={[s.tileIcon, on && { backgroundColor: L.go }]}>
+                    <MaterialCommunityIcons name={item.icon as any} size={24} color={on ? L.onGo : L.text} />
+                  </View>
+                  <Text style={s.tileTitle}>{item.label}</Text>
+                  <Text style={s.tileBlurb} numberOfLines={2}>{item.blurb}</Text>
+                </Pressable>
+              );
+            })}
           </View>
 
-          <View style={s.menuBody}>
-            <Pressable accessibilityRole="button" accessibilityLabel="Call emergency services, 112" onPress={callEmergencyServices} style={s.menuRow}>
-              <View style={{ flex: 1 }}>
-                <Text style={[s.menuTitle, { color: L.danger }]}>Emergency SOS</Text>
-                <Text style={s.menuSub}>Call emergency services · 112</Text>
-              </View>
-              <Ionicons name="call" size={22} color={L.danger} />
-            </Pressable>
+          <Text style={s.h2}>Who is this for?</Text>
+          <View style={s.segment}>
+            {([['self', 'Me'], ['other', 'Someone else']] as const).map(([id, label]) => (
+              <Pressable key={id} accessibilityRole="button" accessibilityState={{ selected: serviceFor === id }} onPress={() => setServiceFor(id)} style={[s.segBtn, serviceFor === id && s.segBtnOn]}>
+                <Text style={[s.segText, serviceFor === id && s.segTextOn]}>{label}</Text>
+              </Pressable>
+            ))}
+          </View>
+          {serviceFor === 'other' && (
+            <View style={s.fields}>
+              <Field label="Their name" value={contactName} onChangeText={setContactName} placeholder="Full name" autoCapitalize="words" />
+              <Field label="Their phone number" value={contactPhone} onChangeText={setContactPhone} placeholder="082 123 4567" keyboardType="phone-pad" />
+            </View>
+          )}
 
-            <View style={s.menuRow}>
-              <View style={{ flex: 1 }}>
-                <Text style={s.menuTitle}>Map appearance</Text>
-                <Text style={s.menuSub}>{darkMapEnabled ? 'Dark map' : 'Light map'}</Text>
+          <Text style={s.h2}>Your vehicle</Text>
+          <Text style={s.helper}>Optional, but it helps your driver find you quickly.</Text>
+          <View style={s.fields}>
+            <Field label="Make & model" value={makeModel} onChangeText={setMakeModel} placeholder="e.g. Toyota Corolla" autoCapitalize="words" />
+            <View>
+              <Text style={s.label}>Colour</Text>
+              <View style={s.swatches}>
+                {COLORS.map((c) => {
+                  const on = color === c.name;
+                  return (
+                    <Pressable key={c.name} accessibilityRole="button" accessibilityLabel={c.name} accessibilityState={{ selected: on }} onPress={() => setColor(on ? '' : c.name)} style={[s.swatchWrap, on && s.swatchWrapOn]}>
+                      <View style={[s.swatch, { backgroundColor: c.hex }, c.name === 'Other' && s.swatchOther]}>
+                        {c.name === 'Other' ? <Text style={s.swatchQ}>?</Text> : null}
+                      </View>
+                    </Pressable>
+                  );
+                })}
               </View>
-              <Switch
-                accessibilityLabel="Toggle dark map"
-                value={darkMapEnabled}
-                onValueChange={setDarkMapEnabled}
-                trackColor={{ false: '#D1D5DB', true: L.go }}
-                thumbColor="#FFFFFF"
-              />
+              <Text style={s.colorName}>{color || 'Tap a colour'}</Text>
+            </View>
+            <Field label="Registration" value={registration} onChangeText={(v) => setRegistration(v.toUpperCase())} placeholder="e.g. CA 123 456" autoCapitalize="characters" />
+            <View style={s.stepRow}>
+              <View style={{ flex: 1 }}>
+                <Text style={s.label}>People in the vehicle</Text>
+                <Text style={s.helperTight}>Including the driver</Text>
+              </View>
+              <View style={s.stepper}>
+                <Pressable accessibilityRole="button" accessibilityLabel="Fewer people" onPress={() => setPassengers((n) => Math.max(1, n - 1))} style={s.stepBtn}><Text style={s.stepGlyph}>−</Text></Pressable>
+                <Text style={s.stepValue}>{passengers}</Text>
+                <Pressable accessibilityRole="button" accessibilityLabel="More people" onPress={() => setPassengers((n) => Math.min(12, n + 1))} style={s.stepBtn}><Text style={s.stepGlyph}>+</Text></Pressable>
+              </View>
             </View>
           </View>
+        </ScrollView>
 
-          <Pressable accessibilityRole="button" onPress={() => { void signOutFromDrawer(); }} style={[s.menuLogout, { marginBottom: bottom + 20 }]}>
-            <Text style={s.menuLogoutText}>Log out</Text>
+        <View style={[s.footer, { paddingBottom: bottom + 12 }]}>
+          <Pressable accessibilityRole="button" disabled={!canContinue} onPress={next} style={[s.cta, !canContinue && s.ctaOff]}>
+            <Text style={[s.ctaText, !canContinue && s.ctaTextOff]}>{hint}</Text>
           </Pressable>
         </View>
-      </Modal>
+      </KeyboardAvoidingView>
+    </View>
+  );
+}
 
-      <BottomSheet snapPoints={[310, '66%']} index={0} backgroundComponent={Sheet} handleIndicatorStyle={{ backgroundColor: '#D1D5DB', width: 40 }}>
-        <BottomSheetView style={s.sheet}>
-          <View style={s.head}>
-            <Text style={s.title}>{activeRequestId ? 'Your tow request' : 'Nearby tow trucks'}</Text>
-            <View style={s.headActions}>
-              {!loading && <Text style={s.count}>{trucks.length} available</Text>}
-            </View>
-          </View>
-          <View style={s.serviceSection}>
-            <Text style={s.servicePrompt}>Breakdown service</Text>
-            <View style={s.serviceRow}>
-              {BREAKDOWN_SERVICES.map((service) => {
-                const selectedService = breakdownType === service.id;
-                return (
-                  <Pressable
-                    key={service.id}
-                    accessibilityRole="button"
-                    accessibilityState={{ selected: selectedService }}
-                    onPress={() => setBreakdownType(service.id)}
-                    disabled={!!activeRequestId}
-                    style={[s.serviceChoice, selectedService && s.serviceChoiceSelected, !!activeRequestId && s.serviceChoiceOff]}
-                  >
-                    <Ionicons name={service.icon} size={17} color={selectedService ? L.go : L.textMuted} />
-                    <Text style={[s.serviceName, selectedService && { color: L.text }]} numberOfLines={1}>{service.label}</Text>
-                  </Pressable>
-                );
-              })}
-            </View>
-          </View>
-          {activeRequestId && activeStatus && requestStatus !== 'pending' && (
-            <Text style={s.tracking}>{trackingCopy[trackingState === 'idle' ? 'connecting' : trackingState]}</Text>
-          )}
-
-          {loading ? (
-            <View style={{ flexDirection: 'row', paddingHorizontal: 16 }}><TruckCardSkeleton /><TruckCardSkeleton /></View>
-          ) : trucks.length === 0 ? (
-            <Text style={s.empty}>No verified trucks within 15 km right now. Try again in a minute or call your insurer’s roadside line.</Text>
-          ) : (
-            <FlatList
-              horizontal showsHorizontalScrollIndicator={false}
-              data={trucks} keyExtractor={(t) => t.vehicleId}
-              contentContainerStyle={{ paddingHorizontal: 16 }}
-              snapToInterval={CARD_WIDTH + 12} decelerationRate="fast"
-              renderItem={({ item }) => <TruckCard truck={item} selected={item.vehicleId === selectedId} onPress={() => pick(item)} />}
-            />
-          )}
-
-          {activeRequestId ? (
-            <View style={[s.statusPanel, { marginBottom: bottom + 8 }]}>
-              <Text style={s.statusTitle}>{requestStatus ? STATUS_TITLE[requestStatus] : 'Your tow request'}</Text>
-              <Text style={s.statusSubtitle}>
-                {requestStatus ? STATUS_COPY[requestStatus] : 'Checking the latest status…'}
-              </Text>
-              {requestCompany && activeStatus && requestStatus !== 'pending' && (
-                <Text style={s.statusCompany}>{requestCompany}</Text>
-              )}
-              {timelineIndex >= 0 && (
-                <View style={s.timeline}>
-                  {TIMELINE.map((step, index) => {
-                    const reached = index <= timelineIndex;
-                    return (
-                      <View key={step.key} style={[s.chip, reached && s.chipOn]}>
-                        <Text style={[s.chipText, reached && s.chipTextOn]}>{step.label}</Text>
-                      </View>
-                    );
-                  })}
-                </View>
-              )}
-              {requestStatus === 'pending' && (
-                <Text style={s.statusTimer}>
-                  {pendingSecondsLeft > 0
-                    ? `Offer window ${Math.floor(pendingSecondsLeft / 60)}:${String(pendingSecondsLeft % 60).padStart(2, '0')} · we re-dispatch if no one accepts`
-                    : 'Re-dispatching to the next nearest truck…'}
-                </Text>
-              )}
-              {activeStatus ? (
-                <Pressable
-                  accessibilityRole="button"
-                  disabled={cancelling}
-                  onPress={cancelActiveRequest}
-                  style={[s.cancelButton, cancelling && s.cancelButtonOff]}
-                >
-                  {cancelling
-                    ? <ActivityIndicator size="small" color={L.danger} />
-                    : <Text style={s.cancelText}>Cancel request</Text>}
-                </Pressable>
-              ) : (
-                <Pressable accessibilityRole="button" onPress={resetRequest} style={[s.cta, { marginHorizontal: 0 }]}>
-                  <Text style={s.ctaText}>{requestStatus === 'completed' ? 'Done' : 'Request another tow'}</Text>
-                </Pressable>
-              )}
-            </View>
-          ) : (
-            <Pressable
-              onPress={request}
-              disabled={!selected || needsDest || quoteRefreshing || requesting}
-              accessibilityRole="button"
-              style={[s.cta, ctaDisabled && s.ctaOff, { marginBottom: bottom + 8 }]}
-            >
-              <Text style={[s.ctaText, ctaDisabled && s.ctaTextOff]}>
-                {needsDest ? 'Enter a destination for your price'
-                  : !selected ? 'Choose a truck'
-                  : quoteRefreshing ? 'Updating route-based ZAR estimate…'
-                  : requesting ? 'Sending request…'
-                  : `Request Tow  ·  ${zarRange(selected.priceMin, selected.priceMax)}`}
-              </Text>
-            </Pressable>
-          )}
-        </BottomSheetView>
-      </BottomSheet>
+function Field({ label, ...props }: { label: string } & React.ComponentProps<typeof TextInput>) {
+  return (
+    <View>
+      <Text style={s.label}>{label}</Text>
+      <TextInput {...props} placeholderTextColor={L.disabledText} style={s.input} accessibilityLabel={label} />
     </View>
   );
 }
 
 const s = StyleSheet.create({
   root: { flex: 1, backgroundColor: L.bg },
-  sheet: { gap: 14, paddingBottom: 8 },
-  head: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'baseline', paddingHorizontal: 20 },
-  headActions: { flexDirection: 'row', alignItems: 'center', gap: 12 },
-  title: { color: L.text, fontFamily: font.bold, fontSize: 18 },
-  count: { color: L.textMuted, fontFamily: font.medium, fontSize: 13 },
-  serviceSection: { gap: 8 },
-  servicePrompt: { color: L.textMuted, fontFamily: font.medium, fontSize: 12, paddingHorizontal: 20 },
-  serviceRow: { flexDirection: 'row', gap: 8, paddingHorizontal: 16 },
-  serviceChoice: { flex: 1, minHeight: 46, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, borderRadius: 14, borderWidth: 1.5, borderColor: 'transparent', backgroundColor: L.surfaceRaised, paddingHorizontal: 6 },
-  serviceChoiceSelected: { borderColor: L.go, backgroundColor: L.goSoft },
-  serviceChoiceOff: { opacity: 0.5 },
-  statusPanel: { marginHorizontal: 16, gap: 8, padding: 16, borderRadius: 16, backgroundColor: L.surfaceRaised },
-  statusTitle: { color: L.text, fontFamily: font.bold, fontSize: 16 },
-  statusSubtitle: { color: L.textMuted, fontFamily: font.medium, fontSize: 13, lineHeight: 18 },
-  statusCompany: { color: L.route, fontFamily: font.semibold, fontSize: 12 },
-  timeline: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 2 },
-  chip: { paddingHorizontal: 10, paddingVertical: 6, borderRadius: 999, borderWidth: 1, borderColor: L.border, backgroundColor: '#FFFFFF' },
-  chipOn: { borderColor: L.go, backgroundColor: L.goSoft },
-  chipText: { color: L.textMuted, fontFamily: font.semibold, fontSize: 11 },
-  chipTextOn: { color: L.go },
-  statusTimer: { color: L.warn, fontFamily: font.medium, fontSize: 12 },
-  cancelButton: { height: 46, borderRadius: 14, borderWidth: 1, borderColor: 'rgba(220,38,38,0.5)', backgroundColor: '#FFFFFF', alignItems: 'center', justifyContent: 'center' },
-  cancelButtonOff: { opacity: 0.6 },
-  cancelText: { color: L.danger, fontFamily: font.semibold, fontSize: 14 },
-  serviceName: { color: L.textMuted, fontFamily: font.semibold, fontSize: 12 },
-  tracking: { color: L.route, fontFamily: font.medium, fontSize: 12, paddingHorizontal: 20 },
-  empty: { color: L.textMuted, fontFamily: font.medium, fontSize: 14, paddingHorizontal: 20, lineHeight: 20 },
-  cta: { marginHorizontal: 16, height: 54, borderRadius: 999, backgroundColor: L.go, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 12 },
+  content: { padding: 20, paddingBottom: 28 },
+  h1: { color: L.text, fontFamily: font.bold, fontSize: 30, letterSpacing: -0.8 },
+  sub: { color: L.textMuted, fontFamily: font.medium, fontSize: 15, marginTop: 6, marginBottom: 18 },
+  grid: { flexDirection: 'row', flexWrap: 'wrap', gap: 12 },
+  tile: { width: '48%', flexGrow: 1, minHeight: 138, padding: 14, borderRadius: 18, backgroundColor: L.surfaceRaised, borderWidth: 2, borderColor: 'transparent' },
+  tileOn: { borderColor: L.go, backgroundColor: L.goSoft },
+  tileIcon: { width: 44, height: 44, borderRadius: 14, backgroundColor: '#FFFFFF', alignItems: 'center', justifyContent: 'center', marginBottom: 10 },
+  tileTitle: { color: L.text, fontFamily: font.bold, fontSize: 15 },
+  tileBlurb: { color: L.textMuted, fontFamily: font.medium, fontSize: 12, marginTop: 3, lineHeight: 16 },
+  h2: { color: L.text, fontFamily: font.bold, fontSize: 20, letterSpacing: -0.3, marginTop: 28, marginBottom: 10 },
+  helper: { color: L.textMuted, fontFamily: font.medium, fontSize: 13, marginTop: -4, marginBottom: 12 },
+  helperTight: { color: L.textMuted, fontFamily: font.medium, fontSize: 12, marginTop: 2 },
+  segment: { flexDirection: 'row', backgroundColor: L.surfaceRaised, borderRadius: 999, padding: 4 },
+  segBtn: { flex: 1, height: 44, borderRadius: 999, alignItems: 'center', justifyContent: 'center' },
+  segBtnOn: { backgroundColor: L.go },
+  segText: { color: L.text, fontFamily: font.semibold, fontSize: 15 },
+  segTextOn: { color: L.onGo },
+  fields: { gap: 14, marginTop: 14 },
+  label: { color: L.text, fontFamily: font.semibold, fontSize: 13, marginBottom: 6 },
+  input: { height: 52, borderRadius: 14, backgroundColor: L.surfaceRaised, paddingHorizontal: 16, color: L.text, fontFamily: font.medium, fontSize: 16 },
+  swatches: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
+  swatchWrap: { padding: 3, borderRadius: 999, borderWidth: 2, borderColor: 'transparent' },
+  swatchWrapOn: { borderColor: L.go },
+  swatch: { width: 34, height: 34, borderRadius: 17, borderWidth: 1, borderColor: 'rgba(17,24,39,0.18)', alignItems: 'center', justifyContent: 'center' },
+  swatchOther: { backgroundColor: L.surfaceRaised },
+  swatchQ: { color: L.textMuted, fontFamily: font.bold, fontSize: 15 },
+  colorName: { color: L.textMuted, fontFamily: font.medium, fontSize: 12, marginTop: 6 },
+  stepRow: { flexDirection: 'row', alignItems: 'center' },
+  stepper: { flexDirection: 'row', alignItems: 'center', gap: 14 },
+  stepBtn: { width: 44, height: 44, borderRadius: 22, backgroundColor: L.surfaceRaised, alignItems: 'center', justifyContent: 'center' },
+  stepGlyph: { color: L.text, fontFamily: font.bold, fontSize: 22, lineHeight: 26 },
+  stepValue: { minWidth: 24, textAlign: 'center', color: L.text, fontFamily: font.bold, fontSize: 20 },
+  footer: { paddingHorizontal: 20, paddingTop: 12, backgroundColor: '#FFFFFF', borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: L.border },
+  cta: { height: 54, borderRadius: 999, backgroundColor: L.go, alignItems: 'center', justifyContent: 'center' },
   ctaOff: { backgroundColor: L.disabled },
   ctaText: { color: L.onGo, fontFamily: font.bold, fontSize: 16 },
   ctaTextOff: { color: L.disabledText },
-  // Uber-style full-screen menu
-  menuRoot: { flex: 1, backgroundColor: '#FFFFFF' },
-  menuBar: { backgroundColor: L.header, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 20 },
-  menuBrand: { color: L.onHeader, fontFamily: font.bold, fontSize: 28, letterSpacing: -0.8 },
-  menuClose: { width: 32, height: 40, alignItems: 'center', justifyContent: 'center' },
-  menuBody: { flex: 1, paddingHorizontal: 20, paddingTop: 12 },
-  menuRow: { minHeight: 84, flexDirection: 'row', alignItems: 'center', gap: 12, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: L.border },
-  menuTitle: { color: L.text, fontFamily: font.bold, fontSize: 24, letterSpacing: -0.4 },
-  menuSub: { color: L.textMuted, fontFamily: font.medium, fontSize: 14, marginTop: 3 },
-  menuLogout: { marginHorizontal: 20, height: 54, borderRadius: 999, backgroundColor: '#EEEEEE', alignItems: 'center', justifyContent: 'center' },
-  menuLogoutText: { color: L.text, fontFamily: font.bold, fontSize: 16 },
 });
