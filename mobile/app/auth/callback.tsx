@@ -17,7 +17,7 @@ export default function AuthCallbackScreen() {
   const code = first(params.code);
   const authError = first(params.error_description) ?? first(params.error);
   const exchange = useRef<Promise<AppRole> | null>(null);
-  const [message, setMessage] = useState('Finishing your Towber sign-in…');
+  const [message, setMessage] = useState('Verifying sign-in link...');
   const [failed, setFailed] = useState(false);
 
   useEffect(() => {
@@ -64,7 +64,7 @@ export default function AuthCallbackScreen() {
 
   return (
     <View style={styles.root}>
-      {failed ? null : <ActivityIndicator size="large" color={colors.go} />}
+      {failed ? null : <ActivityIndicator color="#10B981" size="large" />}
       <Text style={styles.title}>{failed ? 'Sign-in link unavailable' : 'Signing you in'}</Text>
       <Text style={styles.message}>{message}</Text>
       {failed ? (

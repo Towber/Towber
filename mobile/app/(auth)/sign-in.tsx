@@ -44,7 +44,7 @@ export default function SignInScreen() {
       const { error: signInError } = await supabase.auth.signInWithOtp({
         email: normalizedEmail,
         options: {
-          emailRedirectTo: Linking.createURL('auth/callback'),
+          emailRedirectTo: Linking.createURL('/auth/callback'),
           shouldCreateUser: false,
         },
       });

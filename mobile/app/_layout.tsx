@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
-import { Redirect, Slot, useSegments } from 'expo-router';
+import { Redirect, Slot, useRouter, useSegments } from 'expo-router';
+import * as Linking from 'expo-linking';
 import { StatusBar } from 'expo-status-bar';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
@@ -18,6 +19,7 @@ type AuthState =
   | { status: 'error'; message: string };
 
 export default function RootLayout() {
+  const router = useRouter();
   const segments = useSegments() as string[];
   const inAuthGroup = segments[0] === '(auth)';
   const inAuthCallback = segments[0] === 'auth' && segments[1] === 'callback';
@@ -34,7 +36,7 @@ export default function RootLayout() {
     let active = true;
     let generation = 0;
 
-    const loadRole = async (initialSession?: Session | null) => {
+    const loadRole = async (initialSession?: Session | null): Promise<AppRole | null> => {
       const request = ++generation;
       if (active) setAuthState({ status: 'loading' });
       try {
@@ -46,7 +48,7 @@ export default function RootLayout() {
         }
         if (!session) {
           if (active && request === generation) setAuthState({ status: 'signed_out' });
-          return;
+          return null;
         }
 
         const { data: profile, error } = await supabase
@@ -59,9 +61,11 @@ export default function RootLayout() {
           throw new Error('Your Towber profile has no valid role. Ask an administrator to provision it.');
         }
         if (active && request === generation) setAuthState({ status: 'ready', role: profile.role });
+        return profile.role;
       } catch (error) {
         const message = error instanceof Error ? error.message : 'Could not load your Towber profile.';
         if (active && request === generation) setAuthState({ status: 'error', message });
+        return null;
       }
     };
 
@@ -70,14 +74,54 @@ export default function RootLayout() {
       // Avoid calling Supabase auth methods while inside the auth callback lock.
       if (event === 'INITIAL_SESSION' || event === 'TOKEN_REFRESHED') return;
       setAuthState({ status: 'loading' });
-      setTimeout(() => { if (active) void loadRole(session); }, 0);
+      setTimeout(() => {
+        if (!active) return;
+        void loadRole(session).then((role) => {
+          if (active && event === 'SIGNED_IN' && role) {
+            router.replace(role === 'driver' ? '/(main)/driver' : '/(main)/client');
+          }
+        });
+      }, 0);
     });
 
     return () => {
       active = false;
       subscription.unsubscribe();
     };
-  }, [retry]);
+  }, [retry, router]);
+
+  useEffect(() => {
+    let active = true;
+
+    const handleAuthUrl = (url: string) => {
+      const parsed = Linking.parse(url);
+      const path = (parsed.path ?? '').replace(/^\/+/, '');
+      const callbackPath = path.split('/').filter((part) => part !== '--').join('/');
+      const params = parsed.queryParams ?? {};
+      const isAuthCallback = callbackPath.endsWith('auth/callback') ||
+        params.code !== undefined || params.error !== undefined;
+      if (!active || !isAuthCallback) return;
+
+      const firstValue = (value: string | string[] | undefined) =>
+        Array.isArray(value) ? value[0] : value;
+      router.replace({
+        pathname: '/auth/callback',
+        params: {
+          code: firstValue(params.code),
+          error: firstValue(params.error),
+          error_description: firstValue(params.error_description),
+        },
+      });
+    };
+
+    const subscription = Linking.addEventListener('url', ({ url }) => handleAuthUrl(url));
+    void Linking.getInitialURL().then((url) => { if (url) handleAuthUrl(url); });
+
+    return () => {
+      active = false;
+      subscription.remove();
+    };
+  }, [router]);
 
   if (!fontsLoaded) return <LoadingScreen />;
   // Never redirect an existing guest session away from a magic-link callback
