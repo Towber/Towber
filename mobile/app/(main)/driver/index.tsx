@@ -8,7 +8,7 @@ import { supabase, isTerminalRequestStatus, transitionRequest, type RequestActio
 import { startDriverLocationStream } from '../../../src/driverLocation';
 import { colors, darkMapStyle, font, radius, zar } from '../../../src/theme';
 
-type BreakdownType = 'flatbed' | 'jumpstart' | 'lockout';
+type BreakdownType = 'flatbed' | 'jumpstart' | 'lockout' | 'fuel' | 'tyre' | 'repair';
 type JobAlert = {
   id: string;
   breakdownType: BreakdownType;
@@ -16,10 +16,18 @@ type JobAlert = {
   quotedPrice: number;
   status: RequestStatus;
   expiresAt: string | null;
+  vehicle: string | null;
+  registration: string | null;
+  passengers: number | null;
+  contact: string | null;
 };
 
 const JHB = { latitude: -26.2041, longitude: 28.0473, latitudeDelta: 0.08, longitudeDelta: 0.08 };
-const SERVICE_LABEL: Record<BreakdownType, string> = { flatbed: 'Flatbed', jumpstart: 'Jumpstart', lockout: 'Lockout' };
+const SERVICE_LABEL: Record<BreakdownType, string> = {
+  flatbed: 'Towing & recovery', jumpstart: 'Jump start', lockout: 'Lockout', fuel: 'Fuel delivery', tyre: 'Tyre change', repair: 'Minor repairs',
+};
+const BREAKDOWN_TYPES: BreakdownType[] = ['flatbed', 'jumpstart', 'lockout', 'fuel', 'tyre', 'repair'];
+const text = (v: unknown) => (typeof v === 'string' && v.trim() ? v.trim() : null);
 const KNOWN_STATUSES: RequestStatus[] = ['pending', 'accepted', 'en_route', 'arrived', 'completed', 'cancelled', 'declined', 'expired'];
 const OPEN_STATUSES: RequestStatus[] = ['pending', 'accepted', 'en_route', 'arrived'];
 const STATUS_HEADLINE: Record<string, { eyebrow: string; title: string }> = {
@@ -37,7 +45,9 @@ const NEXT_STEP: Partial<Record<RequestStatus, { action: RequestAction; label: s
 function mapJob(row: Record<string, unknown>): JobAlert | null {
   if (typeof row.id !== 'string') return null;
   const value = row.breakdown_type;
-  const breakdownType: BreakdownType = value === 'jumpstart' || value === 'lockout' ? value : 'flatbed';
+  const breakdownType: BreakdownType = BREAKDOWN_TYPES.includes(value as BreakdownType) ? (value as BreakdownType) : 'flatbed';
+  const vehicle = [text(row.vehicle_color), text(row.vehicle_make_model)].filter(Boolean).join(' ') || null;
+  const contact = row.service_for === 'other' ? [text(row.contact_name), text(row.contact_phone)].filter(Boolean).join(' · ') || null : null;
   const status: RequestStatus = KNOWN_STATUSES.includes(row.status as RequestStatus)
     ? (row.status as RequestStatus)
     : 'pending';
@@ -48,6 +58,10 @@ function mapJob(row: Record<string, unknown>): JobAlert | null {
     quotedPrice: Number(row.estimated_price_min) || 0,
     status,
     expiresAt: typeof row.expires_at === 'string' ? row.expires_at : null,
+    vehicle,
+    registration: text(row.vehicle_registration),
+    passengers: typeof row.passengers === 'number' ? row.passengers : null,
+    contact,
   };
 }
 
@@ -142,7 +156,7 @@ export default function DriverRoute() {
     // this driver's assigned vehicle.
     void supabase
       .from('tow_requests')
-      .select('id, status, expires_at, breakdown_type, estimated_distance_km, estimated_price_min')
+      .select('id, status, expires_at, breakdown_type, estimated_distance_km, estimated_price_min, service_for, contact_name, contact_phone, vehicle_make_model, vehicle_color, vehicle_registration, passengers')
       .eq('assigned_vehicle_id', vehicleId)
       .in('status', OPEN_STATUSES)
       .order('created_at', { ascending: false })
@@ -308,7 +322,11 @@ export default function DriverRoute() {
             {jobAlert && (
               <>
                 <View style={styles.jobRow}><Text style={styles.jobLabel}>Service</Text><Text style={styles.jobValue}>{SERVICE_LABEL[jobAlert.breakdownType]}</Text></View>
-                <View style={styles.jobRow}><Text style={styles.jobLabel}>Estimated distance</Text><Text style={styles.jobValue}>{jobAlert.distanceKm.toFixed(1)} km</Text></View>
+                {jobAlert.vehicle ? <View style={styles.jobRow}><Text style={styles.jobLabel}>Vehicle</Text><Text style={styles.jobValue}>{jobAlert.vehicle}</Text></View> : null}
+                {jobAlert.registration ? <View style={styles.jobRow}><Text style={styles.jobLabel}>Registration</Text><Text style={styles.jobValue}>{jobAlert.registration}</Text></View> : null}
+                {jobAlert.passengers != null ? <View style={styles.jobRow}><Text style={styles.jobLabel}>People in vehicle</Text><Text style={styles.jobValue}>{jobAlert.passengers}</Text></View> : null}
+                {jobAlert.contact ? <View style={styles.jobRow}><Text style={styles.jobLabel}>Requested for</Text><Text style={styles.jobValue}>{jobAlert.contact}</Text></View> : null}
+                {jobAlert.breakdownType === 'flatbed' ? <View style={styles.jobRow}><Text style={styles.jobLabel}>Estimated distance</Text><Text style={styles.jobValue}>{jobAlert.distanceKm.toFixed(1)} km</Text></View> : null}
                 <View style={styles.jobRow}><Text style={styles.jobLabel}>Quoted fare</Text><Text style={styles.jobValue}>{zar(jobAlert.quotedPrice)}</Text></View>
                 <Text style={styles.jobRef}>Request {jobAlert.id.slice(0, 8).toUpperCase()}</Text>
               </>
