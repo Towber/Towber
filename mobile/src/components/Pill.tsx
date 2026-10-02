@@ -1,13 +1,13 @@
 import React from 'react';
 import { StyleSheet, Text, View } from 'react-native';
-import { colors, font, radius } from '../theme';
+import { font, light, radius } from '../theme';
 
 type Tone = 'go' | 'route' | 'warn' | 'muted';
 const tones: Record<Tone, { fg: string; bg: string }> = {
-  go: { fg: colors.go, bg: 'rgba(0,230,118,0.12)' },
-  route: { fg: colors.route, bg: 'rgba(56,189,248,0.12)' },
-  warn: { fg: colors.warn, bg: 'rgba(251,191,36,0.12)' },
-  muted: { fg: colors.textMuted, bg: 'rgba(148,163,184,0.12)' },
+  go: { fg: light.go, bg: light.goSoft },
+  route: { fg: light.route, bg: light.routeSoft },
+  warn: { fg: light.warn, bg: 'rgba(180,83,9,0.10)' },
+  muted: { fg: light.textMuted, bg: 'rgba(107,114,128,0.12)' },
 };
 
 export function Pill({ label, tone = 'muted' }: { label: string; tone?: Tone }) {

@@ -1,6 +1,6 @@
 import React, { useEffect, useRef } from 'react';
 import { Animated, Pressable, StyleSheet, Text, View } from 'react-native';
-import { colors, font, radius, zarRange } from '../theme';
+import { font, light, radius, zarRange } from '../theme';
 import type { Truck } from '../api';
 import { Pill } from './Pill';
 import { TruckIcon, typeLabel } from './TruckIcon';
@@ -17,8 +17,8 @@ export function TruckCard({ truck, selected, onPress }: { truck: Truck; selected
       style={[s.card, selected && s.selected]}
     >
       <View style={s.top}>
-        <View style={[s.icon, selected && { backgroundColor: 'rgba(0,230,118,0.16)' }]}>
-          <TruckIcon type={truck.vehicleType} size={26} color={selected ? colors.go : colors.route} />
+        <View style={[s.icon, selected && { backgroundColor: light.goSoft }]}>
+          <TruckIcon type={truck.vehicleType} size={26} color={selected ? light.go : light.route} />
         </View>
         <View style={{ flex: 1 }}>
           <Text style={s.name} numberOfLines={1}>{truck.companyName}</Text>
@@ -61,13 +61,13 @@ export function TruckCardSkeleton() {
 }
 
 const s = StyleSheet.create({
-  card: { width: CARD_WIDTH, padding: 16, borderRadius: radius.card, backgroundColor: 'rgba(30,41,59,0.75)', borderWidth: 1.5, borderColor: colors.border, marginRight: 12, gap: 12 },
-  selected: { borderColor: colors.go, backgroundColor: 'rgba(0,230,118,0.06)' },
+  card: { width: CARD_WIDTH, padding: 16, borderRadius: radius.card, backgroundColor: light.surface, borderWidth: 1.5, borderColor: light.border, marginRight: 12, gap: 12 },
+  selected: { borderColor: light.go, backgroundColor: light.goSoft },
   top: { flexDirection: 'row', alignItems: 'center', gap: 12 },
-  icon: { width: 48, height: 48, borderRadius: 14, backgroundColor: 'rgba(56,189,248,0.12)', alignItems: 'center', justifyContent: 'center' },
-  name: { color: colors.text, fontFamily: font.bold, fontSize: 16 },
-  meta: { color: colors.textMuted, fontFamily: font.medium, fontSize: 13, marginTop: 2 },
-  price: { color: colors.text, fontFamily: font.bold, fontSize: 22, letterSpacing: -0.3 },
+  icon: { width: 48, height: 48, borderRadius: 14, backgroundColor: light.routeSoft, alignItems: 'center', justifyContent: 'center' },
+  name: { color: light.text, fontFamily: font.bold, fontSize: 16 },
+  meta: { color: light.textMuted, fontFamily: font.medium, fontSize: 13, marginTop: 2 },
+  price: { color: light.text, fontFamily: font.bold, fontSize: 22, letterSpacing: -0.3 },
   pills: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
-  bar: { height: 14, borderRadius: 7, backgroundColor: colors.surfaceRaised },
+  bar: { height: 14, borderRadius: 7, backgroundColor: light.surfaceRaised },
 });

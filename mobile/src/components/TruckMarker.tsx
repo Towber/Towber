@@ -1,7 +1,7 @@
 import React, { useEffect, useRef } from 'react';
 import { StyleSheet, View } from 'react-native';
 import { AnimatedRegion, MarkerAnimated } from 'react-native-maps';
-import { colors } from '../theme';
+import { light } from '../theme';
 import type { Truck } from '../api';
 import { TruckIcon } from './TruckIcon';
 
@@ -18,13 +18,13 @@ export function TruckMarker({ truck, selected, onPress }: { truck: Truck; select
   return (
     <MarkerAnimated coordinate={coord as any} onPress={onPress} anchor={{ x: 0.5, y: 0.5 }}>
       <View style={[s.badge, selected && s.selected]}>
-        <TruckIcon type={truck.vehicleType} size={selected ? 22 : 18} color={selected ? colors.bg : colors.route} />
+        <TruckIcon type={truck.vehicleType} size={selected ? 22 : 18} color={selected ? light.onGo : light.route} />
       </View>
     </MarkerAnimated>
   );
 }
 
 const s = StyleSheet.create({
-  badge: { width: 38, height: 38, borderRadius: 19, backgroundColor: colors.surface, borderWidth: 2, borderColor: colors.route, alignItems: 'center', justifyContent: 'center' },
-  selected: { backgroundColor: colors.go, borderColor: colors.go, transform: [{ scale: 1.15 }] },
+  badge: { width: 38, height: 38, borderRadius: 19, backgroundColor: light.surface, borderWidth: 2, borderColor: light.route, alignItems: 'center', justifyContent: 'center' },
+  selected: { backgroundColor: light.go, borderColor: light.go, transform: [{ scale: 1.15 }] },
 });
