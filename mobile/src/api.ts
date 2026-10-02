@@ -48,6 +48,15 @@ export type RoadRoute = {
   durationMinutes: number | null;
   coordinates: LatLng[];
 };
+export type ActiveTripDriver = {
+  driver_user_id: string;
+  driver_name: string;
+  driver_phone: string | null;
+  avatar_url: string | null;
+  vehicle_id: string;
+  vehicle_plate: string;
+  vehicle_type: string | null;
+};
 
 // Drivers use invited email links. Motorists may also use a temporary guest session.
 async function token() {
@@ -120,6 +129,24 @@ export function fetchRoadRoute(origin: LatLng, placeId: string, sessionToken: st
 
 export const createRequest = (b: { pickup: LatLng; dropoff: LatLng; vehicleId: string; tripDistanceKm: number; breakdownType: BreakdownType }) =>
   call<{ request: { id: string; status: string; estimated_price_min: number; estimated_price_max: number } }>('/api/requests', { method: 'POST', body: JSON.stringify(b) }, true);
+
+export async function uploadDriverAvatar(uri: string, userId: string) {
+  const response = await fetch(uri);
+  const blob = await response.blob();
+  const path = `${userId}/avatar-${Date.now()}.jpg`;
+  const { error } = await supabase.storage.from('driver-avatars').upload(path, blob, {
+    contentType: 'image/jpeg',
+    upsert: false,
+  });
+  if (error) throw error;
+  return supabase.storage.from('driver-avatars').getPublicUrl(path).data.publicUrl;
+}
+
+export async function fetchActiveTripDriver(requestId: string) {
+  const { data, error } = await supabase.rpc('get_active_tow_driver', { p_request_id: requestId });
+  if (error) throw error;
+  return ((data ?? [])[0] as ActiveTripDriver | undefined) ?? null;
+}
 
 export function sendDriverLocation(vehicleId: string, position: DriverLocation) {
   return call<void>(`/api/vehicles/${encodeURIComponent(vehicleId)}/location`, {

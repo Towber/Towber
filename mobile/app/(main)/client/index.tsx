@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Alert, FlatList, Linking, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Alert, FlatList, Image, Linking, Pressable, StyleSheet, Text, View } from 'react-native';
 import MapView, { Marker, Polyline, PROVIDER_GOOGLE } from 'react-native-maps';
 import BottomSheet, { BottomSheetView } from '@gorhom/bottom-sheet';
 import { BlurView } from 'expo-blur';
@@ -9,7 +9,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { colors, darkMapStyle, font, radius, zarRange } from '../../../src/theme';
-import { supabase, type BreakdownType, createRequest, fetchNearby, fetchPlaceSuggestions, fetchRoadRoute, type LatLng, type PlaceSuggestion, type RoadRoute, roadKm, subscribeRequestDriverLocation, type Truck } from '../../../src/api';
+import { fetchActiveTripDriver, supabase, type ActiveTripDriver, type BreakdownType, createRequest, fetchNearby, fetchPlaceSuggestions, fetchRoadRoute, type LatLng, type PlaceSuggestion, type RoadRoute, roadKm, subscribeRequestDriverLocation, type Truck } from '../../../src/api';
 import { SearchBar } from '../../../src/components/SearchBar';
 import { TruckCard, TruckCardSkeleton, CARD_WIDTH } from '../../../src/components/TruckCard';
 import { TruckMarker } from '../../../src/components/TruckMarker';
@@ -53,6 +53,7 @@ export default function HomeScreen() {
   const [requesting, setRequesting] = useState(false);
   const [activeRequestId, setActiveRequestId] = useState<string | null>(null);
   const [trackingState, setTrackingState] = useState<TrackingState>('idle');
+  const [driverProfile, setDriverProfile] = useState<ActiveTripDriver | null>(null);
   const [breakdownType, setBreakdownType] = useState<BreakdownType>('flatbed');
 
   const tripKm = useMemo(() => route?.distanceKm ?? (me && dest ? roadKm(me, dest) : DEFAULT_TRIP_KM), [me, dest, route]);
@@ -155,6 +156,25 @@ export default function HomeScreen() {
       mounted = false;
       unsubscribe?.();
     };
+  }, [activeRequestId]);
+
+  useEffect(() => {
+    if (!activeRequestId) {
+      setDriverProfile(null);
+      return;
+    }
+    let active = true;
+    const loadDriver = async () => {
+      try {
+        const profile = await fetchActiveTripDriver(activeRequestId);
+        if (active) setDriverProfile(profile);
+      } catch {
+        // Assignment/profile data may not be available until the operator accepts the request.
+      }
+    };
+    void loadDriver();
+    const interval = setInterval(() => { void loadDriver(); }, 10_000);
+    return () => { active = false; clearInterval(interval); };
   }, [activeRequestId]);
 
   // Frame the map when we know where the user is / where they're going.
@@ -320,6 +340,30 @@ export default function HomeScreen() {
             </View>
           </View>
           {activeRequestId && <Text style={s.tracking}>{trackingCopy[trackingState === 'idle' ? 'connecting' : trackingState]}</Text>}
+          {activeRequestId && driverProfile && (
+            <View style={s.driverCard}>
+              {driverProfile.avatar_url ? (
+                <Image source={{ uri: driverProfile.avatar_url }} style={s.driverAvatar} />
+              ) : (
+                <View style={s.driverAvatarFallback}><Ionicons name="person" size={24} color={colors.textMuted} /></View>
+              )}
+              <View style={s.driverCopy}>
+                <Text style={s.driverEyebrow}>YOUR DRIVER</Text>
+                <Text style={s.driverName} numberOfLines={1}>{driverProfile.driver_name}</Text>
+                <Text style={s.driverVehicle} numberOfLines={1}>{driverProfile.vehicle_type ?? 'Tow vehicle'} · {driverProfile.vehicle_plate}</Text>
+              </View>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel={`Call ${driverProfile.driver_name}`}
+                disabled={!driverProfile.driver_phone}
+                onPress={() => { if (driverProfile.driver_phone) void Linking.openURL(`tel:${driverProfile.driver_phone}`); }}
+                style={[s.callDriver, !driverProfile.driver_phone && s.callDriverDisabled]}
+                hitSlop={6}
+              >
+                <Ionicons name="call" size={18} color={colors.bg} />
+              </Pressable>
+            </View>
+          )}
 
           {loading ? (
             <View style={{ flexDirection: 'row', paddingHorizontal: 16 }}><TruckCardSkeleton /><TruckCardSkeleton /></View>
@@ -381,6 +425,15 @@ const s = StyleSheet.create({
   serviceChoiceSelected: { borderColor: colors.go, backgroundColor: 'rgba(0,230,118,0.10)' },
   serviceName: { color: colors.textMuted, fontFamily: font.semibold, fontSize: 12 },
   tracking: { color: colors.route, fontFamily: font.medium, fontSize: 12, paddingHorizontal: 20 },
+  driverCard: { marginHorizontal: 16, minHeight: 78, flexDirection: 'row', alignItems: 'center', gap: 12, padding: 10, borderRadius: 18, borderWidth: 1, borderColor: colors.border, backgroundColor: 'rgba(30,41,59,0.72)' },
+  driverAvatar: { width: 56, height: 56, borderRadius: 28, backgroundColor: colors.surfaceRaised },
+  driverAvatarFallback: { width: 56, height: 56, borderRadius: 28, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.surfaceRaised },
+  driverCopy: { flex: 1, gap: 3 },
+  driverEyebrow: { color: colors.route, fontFamily: font.bold, fontSize: 9, letterSpacing: 1.2 },
+  driverName: { color: colors.text, fontFamily: font.bold, fontSize: 15 },
+  driverVehicle: { color: colors.textMuted, fontFamily: font.medium, fontSize: 11 },
+  callDriver: { width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.go },
+  callDriverDisabled: { backgroundColor: colors.surfaceRaised },
   empty: { color: colors.textMuted, fontFamily: font.medium, fontSize: 14, paddingHorizontal: 20, lineHeight: 20 },
   themeToggle: { position: 'absolute', right: 16, minHeight: 40, flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 12, borderRadius: radius.pill, backgroundColor: 'rgba(15,23,42,0.9)', borderWidth: 1, borderColor: colors.border },
   themeToggleText: { color: colors.text, fontFamily: font.semibold, fontSize: 12 },

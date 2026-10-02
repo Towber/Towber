@@ -12,6 +12,7 @@ import {
   View,
 } from 'react-native';
 import * as Linking from 'expo-linking';
+import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { supabase } from '../../src/api';
@@ -24,6 +25,7 @@ const MUTED = '#94A3B8';
 const GLASS_BORDER = 'rgba(148,163,184,0.18)';
 
 export default function SignInScreen() {
+  const router = useRouter();
   const [email, setEmail] = useState('');
   const [sendingLink, setSendingLink] = useState(false);
   const [startingGuest, setStartingGuest] = useState(false);
@@ -162,6 +164,9 @@ export default function SignInScreen() {
           ) : null}
 
           <Text style={styles.footer}>Guest sessions are temporary and can’t be recovered after signing out or reinstalling the app.</Text>
+          <Pressable accessibilityRole="button" onPress={() => router.push('/(auth)/register-driver')} style={styles.driverLink}>
+            <Text style={styles.driverLinkText}>Complete driver profile</Text>
+          </Pressable>
         </ScrollView>
       </KeyboardAvoidingView>
     </SafeAreaView>
@@ -260,4 +265,6 @@ const styles = StyleSheet.create({
   errorText: { color: TEXT, fontFamily: font.medium, fontSize: 13, lineHeight: 19 },
   errorHint: { color: '#FBBF24', fontFamily: font.regular, fontSize: 12, lineHeight: 18 },
   footer: { color: MUTED, fontFamily: font.regular, fontSize: 11, lineHeight: 16, textAlign: 'center', marginTop: 18 },
+  driverLink: { alignSelf: 'center', padding: 12, marginTop: 4 },
+  driverLinkText: { color: ACCENT, fontFamily: font.semibold, fontSize: 12 },
 });

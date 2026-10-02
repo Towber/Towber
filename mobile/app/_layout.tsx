@@ -21,6 +21,7 @@ type AuthState =
 export default function RootLayout() {
   const segments = useSegments() as string[];
   const inAuthGroup = segments[0] === '(auth)';
+  const inDriverRegistration = inAuthGroup && segments[1] === 'register-driver';
   const inAuthCallback = segments[0] === 'auth' && segments[1] === 'callback';
   const [authState, setAuthState] = useState<AuthState>({ status: 'loading' });
   const [retry, setRetry] = useState(0);
@@ -119,6 +120,7 @@ export default function RootLayout() {
   // render. Prefer that verified handoff until loadRole catches up.
   const role = getPendingAuthRole() ?? authState.role;
   const home = role === 'driver' ? '/(main)/driver' : '/(main)/client';
+  if (inDriverRegistration) return <AppFrame><Slot /></AppFrame>;
   if (inAuthGroup) return <Redirect href={home} />;
   if (segments[0] === '(main)' && segments[1] !== role) return <Redirect href={home} />;
 
