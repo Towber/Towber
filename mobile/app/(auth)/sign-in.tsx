@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import {
   ActivityIndicator,
+  Image,
   KeyboardAvoidingView,
   Platform,
   Pressable,
@@ -14,7 +15,13 @@ import * as Linking from 'expo-linking';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { supabase } from '../../src/api';
-import { colors, font, radius } from '../../src/theme';
+import { font } from '../../src/theme';
+
+const SCREEN_BG = '#0F172A';
+const ACCENT = '#10B981';
+const TEXT = '#F8FAFC';
+const MUTED = '#94A3B8';
+const GLASS_BORDER = 'rgba(148,163,184,0.18)';
 
 export default function SignInScreen() {
   const [email, setEmail] = useState('');
@@ -63,18 +70,51 @@ export default function SignInScreen() {
     }
   };
 
+  const actionsDisabled = sendingLink || startingGuest;
+
   return (
     <SafeAreaView style={styles.safe} edges={['top', 'bottom']}>
       <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
         <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
-          <View style={styles.brandMark}><Text style={styles.brandMarkText}>T</Text></View>
-          <Text style={styles.brand}>TOWBER</Text>
-          <Text style={styles.title}>Welcome to Towber</Text>
-          <Text style={styles.subtitle}>
-            Drivers: use the email address invited by Towber. Clients can continue as a guest.
-          </Text>
+          <View style={styles.header}>
+            <Image
+              accessible
+              accessibilityLabel="Towber logo"
+              resizeMode="contain"
+              source={require('../../assets/icon.png')}
+              style={styles.logo}
+            />
+            <Text style={styles.brand}>TOWBER</Text>
+            <Text style={styles.title}>Welcome to Towber</Text>
+            <Text style={styles.subtitle}>
+              Drivers: sign in with the email invited by Towber. Clients can get help right away as a guest.
+            </Text>
+          </View>
 
-          <View style={styles.form}>
+          <Pressable
+            accessibilityRole="button"
+            disabled={actionsDisabled}
+            onPress={() => { void continueAsClient(); }}
+            style={({ pressed }) => [styles.guestButton, pressed && styles.guestPressed, actionsDisabled && styles.disabled]}
+          >
+            <View style={styles.guestCopy}>
+              <Text style={styles.guestButtonText}>Continue as a client guest</Text>
+              <Text style={styles.guestButtonSubtext}>No account needed to request help</Text>
+            </View>
+            {startingGuest ? (
+              <ActivityIndicator color={SCREEN_BG} />
+            ) : (
+              <View style={styles.guestArrow}><Text style={styles.guestArrowText}>›</Text></View>
+            )}
+          </Pressable>
+
+          <View style={styles.divider}>
+            <View style={styles.dividerLine} />
+            <Text style={styles.dividerText}>OR SIGN IN WITH EMAIL</Text>
+            <View style={styles.dividerLine} />
+          </View>
+
+          <View style={styles.formCard}>
             <Text style={styles.label}>Email address</Text>
             <TextInput
               accessibilityLabel="Email address"
@@ -84,7 +124,7 @@ export default function SignInScreen() {
               keyboardType="email-address"
               onChangeText={(value) => { setEmail(value); setError(null); setSentTo(null); }}
               placeholder="you@example.com"
-              placeholderTextColor={colors.textMuted}
+              placeholderTextColor={MUTED}
               returnKeyType="send"
               style={styles.input}
               value={email}
@@ -92,11 +132,15 @@ export default function SignInScreen() {
             />
             <Pressable
               accessibilityRole="button"
-              disabled={sendingLink || startingGuest}
+              disabled={actionsDisabled}
               onPress={() => { void sendMagicLink(); }}
-              style={({ pressed }) => [styles.primaryButton, pressed && styles.pressed, (sendingLink || startingGuest) && styles.disabled]}
+              style={({ pressed }) => [styles.emailButton, pressed && styles.emailPressed, actionsDisabled && styles.disabled]}
             >
-              {sendingLink ? <ActivityIndicator color={colors.bg} /> : <Text style={styles.primaryButtonText}>Email me a sign-in link</Text>}
+              {sendingLink ? (
+                <ActivityIndicator color={ACCENT} />
+              ) : (
+                <Text style={styles.emailButtonText}>Email me a sign-in link</Text>
+              )}
             </Pressable>
             <Text style={styles.helper}>Only an account already invited to Towber can sign in with email.</Text>
           </View>
@@ -117,16 +161,6 @@ export default function SignInScreen() {
             </View>
           ) : null}
 
-          <View style={styles.divider}><View style={styles.dividerLine} /><Text style={styles.dividerText}>OR</Text><View style={styles.dividerLine} /></View>
-
-          <Pressable
-            accessibilityRole="button"
-            disabled={sendingLink || startingGuest}
-            onPress={() => { void continueAsClient(); }}
-            style={({ pressed }) => [styles.secondaryButton, pressed && styles.secondaryPressed, (sendingLink || startingGuest) && styles.disabled]}
-          >
-            {startingGuest ? <ActivityIndicator color={colors.go} /> : <Text style={styles.secondaryButtonText}>Continue as a client guest</Text>}
-          </Pressable>
           <Text style={styles.footer}>Guest sessions are temporary and can’t be recovered after signing out or reinstalling the app.</Text>
         </ScrollView>
       </KeyboardAvoidingView>
@@ -136,32 +170,94 @@ export default function SignInScreen() {
 
 const styles = StyleSheet.create({
   flex: { flex: 1 },
-  safe: { flex: 1, backgroundColor: colors.bg },
-  content: { flexGrow: 1, justifyContent: 'center', paddingHorizontal: 28, paddingVertical: 36 },
-  brandMark: { width: 48, height: 48, borderRadius: 16, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.go, marginBottom: 12 },
-  brandMarkText: { color: colors.bg, fontFamily: font.bold, fontSize: 29, lineHeight: 34 },
-  brand: { color: colors.go, fontFamily: font.bold, fontSize: 12, letterSpacing: 2.5, marginBottom: 22 },
-  title: { color: colors.text, fontFamily: font.bold, fontSize: 28, lineHeight: 35 },
-  subtitle: { color: colors.textMuted, fontFamily: font.regular, fontSize: 14, lineHeight: 21, marginTop: 10, marginBottom: 30 },
-  form: { gap: 10 },
-  label: { color: colors.text, fontFamily: font.semibold, fontSize: 13 },
-  input: { height: 54, borderWidth: 1, borderColor: colors.border, borderRadius: 14, backgroundColor: colors.surface, paddingHorizontal: 16, color: colors.text, fontFamily: font.regular, fontSize: 15 },
-  primaryButton: { minHeight: 54, borderRadius: 16, backgroundColor: colors.go, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 18, marginTop: 6 },
-  primaryButtonText: { color: colors.bg, fontFamily: font.bold, fontSize: 15 },
-  pressed: { opacity: 0.82 },
-  disabled: { opacity: 0.6 },
-  helper: { color: colors.textMuted, fontFamily: font.regular, fontSize: 12, lineHeight: 18, marginTop: 2 },
-  notice: { padding: 14, marginTop: 18, borderRadius: radius.card, borderColor: 'rgba(0,230,118,0.35)', borderWidth: 1, backgroundColor: 'rgba(0,230,118,0.08)', gap: 4 },
-  noticeTitle: { color: colors.go, fontFamily: font.semibold, fontSize: 14 },
-  noticeText: { color: colors.text, fontFamily: font.regular, fontSize: 13, lineHeight: 19 },
-  errorBox: { padding: 14, marginTop: 16, borderRadius: radius.card, borderColor: 'rgba(244,63,94,0.4)', borderWidth: 1, backgroundColor: 'rgba(244,63,94,0.08)', gap: 6 },
-  errorText: { color: colors.text, fontFamily: font.medium, fontSize: 13, lineHeight: 19 },
-  errorHint: { color: colors.warn, fontFamily: font.regular, fontSize: 12, lineHeight: 18 },
-  divider: { flexDirection: 'row', alignItems: 'center', gap: 12, marginVertical: 22 },
-  dividerLine: { flex: 1, height: 1, backgroundColor: colors.border },
-  dividerText: { color: colors.textMuted, fontFamily: font.semibold, fontSize: 11, letterSpacing: 1 },
-  secondaryButton: { minHeight: 52, borderRadius: 16, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 18 },
-  secondaryPressed: { backgroundColor: colors.surfaceRaised },
-  secondaryButtonText: { color: colors.text, fontFamily: font.semibold, fontSize: 14 },
-  footer: { color: colors.textMuted, fontFamily: font.regular, fontSize: 11, lineHeight: 16, textAlign: 'center', marginTop: 18 },
+  safe: { flex: 1, backgroundColor: SCREEN_BG },
+  content: { flexGrow: 1, justifyContent: 'center', paddingHorizontal: 24, paddingTop: 28, paddingBottom: 36 },
+  header: { alignItems: 'center', marginBottom: 24 },
+  logo: {
+    width: 116,
+    height: 116,
+    borderRadius: 28,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.08)',
+    backgroundColor: '#2A2D30',
+    shadowColor: '#000000',
+    shadowOpacity: 0.22,
+    shadowRadius: 18,
+    shadowOffset: { width: 0, height: 8 },
+    elevation: 5,
+  },
+  brand: { color: ACCENT, fontFamily: font.bold, fontSize: 11, letterSpacing: 3, marginTop: 14 },
+  title: { color: TEXT, fontFamily: font.bold, fontSize: 28, lineHeight: 35, textAlign: 'center', marginTop: 6 },
+  subtitle: { color: MUTED, fontFamily: font.regular, fontSize: 13, lineHeight: 20, textAlign: 'center', marginTop: 9, maxWidth: 340 },
+  guestButton: {
+    minHeight: 68,
+    borderRadius: 20,
+    backgroundColor: ACCENT,
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    flexDirection: 'row',
+    paddingVertical: 14,
+    paddingHorizontal: 18,
+    shadowColor: ACCENT,
+    shadowOpacity: 0.2,
+    shadowRadius: 16,
+    shadowOffset: { width: 0, height: 7 },
+    elevation: 4,
+  },
+  guestCopy: { flex: 1, gap: 3 },
+  guestButtonText: { color: '#052E24', fontFamily: font.bold, fontSize: 15 },
+  guestButtonSubtext: { color: 'rgba(5,46,36,0.78)', fontFamily: font.medium, fontSize: 12 },
+  guestArrow: { width: 34, height: 34, borderRadius: 17, backgroundColor: 'rgba(5,46,36,0.1)', alignItems: 'center', justifyContent: 'center', marginLeft: 12 },
+  guestArrowText: { color: '#052E24', fontFamily: font.bold, fontSize: 25, lineHeight: 29, marginTop: -2 },
+  guestPressed: { opacity: 0.86, transform: [{ scale: 0.99 }] },
+  divider: { flexDirection: 'row', alignItems: 'center', gap: 12, marginVertical: 20 },
+  dividerLine: { flex: 1, height: 1, backgroundColor: GLASS_BORDER },
+  dividerText: { color: MUTED, fontFamily: font.semibold, fontSize: 10, letterSpacing: 1 },
+  formCard: {
+    gap: 12,
+    padding: 18,
+    borderRadius: 24,
+    borderWidth: 1,
+    borderColor: GLASS_BORDER,
+    backgroundColor: 'rgba(255,255,255,0.045)',
+    shadowColor: '#000000',
+    shadowOpacity: 0.2,
+    shadowRadius: 20,
+    shadowOffset: { width: 0, height: 10 },
+    elevation: 4,
+  },
+  label: { color: TEXT, fontFamily: font.semibold, fontSize: 13 },
+  input: {
+    minHeight: 56,
+    borderWidth: 1,
+    borderColor: 'rgba(148,163,184,0.2)',
+    borderRadius: 16,
+    backgroundColor: 'rgba(15,23,42,0.72)',
+    paddingHorizontal: 16,
+    color: TEXT,
+    fontFamily: font.regular,
+    fontSize: 15,
+  },
+  emailButton: {
+    minHeight: 56,
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: 'rgba(16,185,129,0.48)',
+    backgroundColor: 'rgba(16,185,129,0.1)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 18,
+    marginTop: 2,
+  },
+  emailButtonText: { color: ACCENT, fontFamily: font.bold, fontSize: 14 },
+  emailPressed: { backgroundColor: 'rgba(16,185,129,0.17)' },
+  disabled: { opacity: 0.58 },
+  helper: { color: MUTED, fontFamily: font.regular, fontSize: 11, lineHeight: 17 },
+  notice: { padding: 14, marginTop: 16, borderRadius: 18, borderColor: 'rgba(16,185,129,0.32)', borderWidth: 1, backgroundColor: 'rgba(16,185,129,0.08)', gap: 4 },
+  noticeTitle: { color: ACCENT, fontFamily: font.semibold, fontSize: 14 },
+  noticeText: { color: TEXT, fontFamily: font.regular, fontSize: 13, lineHeight: 19 },
+  errorBox: { padding: 14, marginTop: 16, borderRadius: 18, borderColor: 'rgba(244,63,94,0.4)', borderWidth: 1, backgroundColor: 'rgba(244,63,94,0.08)', gap: 6 },
+  errorText: { color: TEXT, fontFamily: font.medium, fontSize: 13, lineHeight: 19 },
+  errorHint: { color: '#FBBF24', fontFamily: font.regular, fontSize: 12, lineHeight: 18 },
+  footer: { color: MUTED, fontFamily: font.regular, fontSize: 11, lineHeight: 16, textAlign: 'center', marginTop: 18 },
 });
