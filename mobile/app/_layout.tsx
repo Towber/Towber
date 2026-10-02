@@ -11,7 +11,11 @@ import { supabase } from '../src/api';
 import { colors, font } from '../src/theme';
 
 type AppRole = 'client' | 'driver';
-type AuthState = { status: 'loading' } | { status: 'ready'; role: AppRole } | { status: 'error'; message: string };
+type AuthState =
+  | { status: 'loading' }
+  | { status: 'signed_out' }
+  | { status: 'ready'; role: AppRole }
+  | { status: 'error'; message: string };
 
 export default function RootLayout() {
   const segments = useSegments() as string[];
@@ -39,11 +43,9 @@ export default function RootLayout() {
           session = data.session;
         }
         if (!session) {
-          const { data, error } = await supabase.auth.signInAnonymously();
-          if (error) throw error;
-          session = data.session;
+          if (active && request === generation) setAuthState({ status: 'signed_out' });
+          return;
         }
-        if (!session) throw new Error('Could not create or restore a Towber session.');
 
         const { data: profile, error } = await supabase
           .from('user_profiles')
@@ -75,37 +77,61 @@ export default function RootLayout() {
   }, [retry]);
 
   if (!fontsLoaded || authState.status === 'loading') return <LoadingScreen />;
+
+  const inAuthGroup = segments[0] === '(auth)';
+  const inAuthCallback = segments[0] === 'auth' && segments[1] === 'callback';
+
   if (authState.status === 'error') {
+    const hint = authHint(authState.message);
     return (
-      <GestureHandlerRootView style={styles.root}>
-        <SafeAreaProvider>
-          <StatusBar style="light" />
-          <View style={styles.messageWrap}>
-            <Text style={styles.title}>Towber profile unavailable</Text>
-            <Text style={styles.body}>{authState.message}</Text>
-            <Text style={styles.hint}>Apply the Supabase profile/role migration, then retry.</Text>
-            <Pressable accessibilityRole="button" onPress={() => setRetry((value) => value + 1)} style={styles.retry}>
-              <Text style={styles.retryText}>Try again</Text>
-            </Pressable>
-          </View>
-        </SafeAreaProvider>
-      </GestureHandlerRootView>
+      <AppFrame>
+        <View style={styles.messageWrap}>
+          <Text style={styles.title}>Towber profile unavailable</Text>
+          <Text style={styles.body}>{authState.message}</Text>
+          <Text style={styles.hint}>{hint}</Text>
+          <Pressable accessibilityRole="button" onPress={() => setRetry((value) => value + 1)} style={styles.retry}>
+            <Text style={styles.retryText}>Try again</Text>
+          </Pressable>
+          <Pressable accessibilityRole="button" onPress={() => { void supabase.auth.signOut(); }} style={styles.textButton}>
+            <Text style={styles.textButtonLabel}>Sign out / use another account</Text>
+          </Pressable>
+        </View>
+      </AppFrame>
     );
   }
 
-  const role = authState.role;
-  if (segments[0] === '(main)' && segments[1] !== role) {
-    return <Redirect href={role === 'driver' ? '/(main)/driver' : '/(main)/client'} />;
+  if (authState.status === 'signed_out') {
+    if (inAuthGroup || inAuthCallback) return <AppFrame><Slot /></AppFrame>;
+    return <Redirect href="/(auth)/sign-in" />;
   }
 
+  const role = authState.role;
+  const home = role === 'driver' ? '/(main)/driver' : '/(main)/client';
+  if (inAuthGroup || inAuthCallback) return <Redirect href={home} />;
+  if (segments[0] === '(main)' && segments[1] !== role) return <Redirect href={home} />;
+
+  return <AppFrame><Slot /></AppFrame>;
+}
+
+function AppFrame({ children }: { children: React.ReactNode }) {
   return (
     <GestureHandlerRootView style={styles.root}>
       <SafeAreaProvider>
         <StatusBar style="light" />
-        <Slot />
+        {children}
       </SafeAreaProvider>
     </GestureHandlerRootView>
   );
+}
+
+function authHint(message: string) {
+  if (/anonymous sign-ins are disabled/i.test(message)) {
+    return 'Enable Anonymous Sign-Ins in Supabase Auth settings, or use an invited email sign-in link.';
+  }
+  if (/user_profiles|schema cache|does not exist/i.test(message)) {
+    return 'Check that the Supabase profile/role migrations have been applied, then retry.';
+  }
+  return 'Check your connection and Supabase Auth/profile settings, then try again.';
 }
 
 function LoadingScreen() {
@@ -122,4 +148,6 @@ const styles = StyleSheet.create({
   hint: { color: colors.warn, fontFamily: font.medium, fontSize: 13, textAlign: 'center' },
   retry: { marginTop: 8, paddingHorizontal: 24, height: 48, borderRadius: 14, backgroundColor: colors.go, alignItems: 'center', justifyContent: 'center' },
   retryText: { color: colors.bg, fontFamily: font.bold, fontSize: 15 },
+  textButton: { padding: 10 },
+  textButtonLabel: { color: colors.textMuted, fontFamily: font.medium, fontSize: 13 },
 });
