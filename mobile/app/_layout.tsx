@@ -8,6 +8,7 @@ import { useFonts, PlusJakartaSans_400Regular, PlusJakartaSans_500Medium, PlusJa
 import type { Session } from '@supabase/supabase-js';
 
 import { supabase } from '../src/api';
+import { getPendingAuthRole, setPendingAuthRole } from '../src/auth';
 import { colors, font } from '../src/theme';
 
 type AppRole = 'client' | 'driver';
@@ -58,7 +59,10 @@ export default function RootLayout() {
         if (profile?.role !== 'client' && profile?.role !== 'driver') {
           throw new Error('Your Towber profile has no valid role. Ask an administrator to provision it.');
         }
-        if (active && request === generation) setAuthState({ status: 'ready', role: profile.role });
+        if (active && request === generation) {
+          setAuthState({ status: 'ready', role: profile.role });
+          if (getPendingAuthRole() === profile.role) setPendingAuthRole(null);
+        }
       } catch (error) {
         const message = error instanceof Error ? error.message : 'Could not load your Towber profile.';
         if (active && request === generation) setAuthState({ status: 'error', message });
@@ -69,6 +73,7 @@ export default function RootLayout() {
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
       // Avoid calling Supabase auth methods while inside the auth callback lock.
       if (event === 'INITIAL_SESSION' || event === 'TOKEN_REFRESHED') return;
+      if (!session) setPendingAuthRole(null);
       setAuthState({ status: 'loading' });
       setTimeout(() => { if (active) void loadRole(session); }, 0);
     });
@@ -109,7 +114,10 @@ export default function RootLayout() {
     return <Redirect href="/(auth)/sign-in" />;
   }
 
-  const role = authState.role;
+  // The callback has already verified the invited user's profile, but the
+  // layout may still contain the previous anonymous client's role for one
+  // render. Prefer that verified handoff until loadRole catches up.
+  const role = getPendingAuthRole() ?? authState.role;
   const home = role === 'driver' ? '/(main)/driver' : '/(main)/client';
   if (inAuthGroup) return <Redirect href={home} />;
   if (segments[0] === '(main)' && segments[1] !== role) return <Redirect href={home} />;
