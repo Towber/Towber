@@ -188,6 +188,27 @@ const routesLimit = rateLimit({
   message: { error: 'Too many route requests. Please wait a moment and try again.' },
 });
 
+// Magic-link landing: hand the one-time sign-in code back to the mobile app.
+// Supabase may redirect the email link to this API's root with ?code=...; the
+// app can only exchange that code, so forward it to the towber:// deep link.
+app.get('/', (req, res, next) => {
+  const code = typeof req.query.code === 'string' ? req.query.code : '';
+  const err = typeof req.query.error_description === 'string' ? req.query.error_description.slice(0, 200) : '';
+  const validCode = /^[A-Za-z0-9._-]{1,300}$/.test(code);
+  if (!validCode && !err) return next();
+  const link = validCode
+    ? `towber://auth/callback?code=${encodeURIComponent(code)}`
+    : `towber://auth/callback?error_description=${encodeURIComponent(err)}`;
+  res.set({ 'Cache-Control': 'no-store', 'Referrer-Policy': 'no-referrer' });
+  res.status(200).type('html').send(
+    `<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">` +
+    `<meta http-equiv="refresh" content="0;url=${link}"><title>Open Towber</title>` +
+    `<body style="font-family:sans-serif;padding:2rem;text-align:center">` +
+    `<h2>Signing you in</h2><p>If the app didn't open, tap the button.</p>` +
+    `<p><a href="${link}" style="display:inline-block;padding:1rem 1.5rem;background:#1747b8;color:#fff;border-radius:8px;text-decoration:none">Open Towber</a></p></body>`
+  );
+});
+
 // Root health-check (fixes "Cannot GET /" on api.towber.co.za)
 app.get('/', (_req, res) => {
   res.status(200).json({
