@@ -34,7 +34,8 @@ export type DriverLocation = LatLng & {
 };
 
 export type LocationChannelStatus = 'connecting' | 'connected' | 'error';
-export type BreakdownType = 'flatbed' | 'jumpstart' | 'lockout';
+export type BreakdownType = 'flatbed' | 'jumpstart' | 'lockout' | 'fuel' | 'tyre' | 'repair';
+export type ServiceFor = 'self' | 'other';
 export type RequestStatus =
   | 'pending'
   | 'accepted'
@@ -152,7 +153,16 @@ export function fetchRoadRoute(origin: LatLng, placeId: string, sessionToken: st
   }));
 }
 
-export const createRequest = (b: { pickup: LatLng; dropoff: LatLng; vehicleId: string; tripDistanceKm: number; breakdownType: BreakdownType }) =>
+export type RequestDetails = {
+  serviceFor?: ServiceFor;
+  contactName?: string;
+  contactPhone?: string;
+  vehicleMakeModel?: string;
+  vehicleColor?: string;
+  vehicleRegistration?: string;
+  passengers?: number;
+};
+export const createRequest = (b: { pickup: LatLng; dropoff: LatLng; vehicleId: string; tripDistanceKm: number; breakdownType: BreakdownType } & RequestDetails) =>
   call<{ request: TowRequest; truck: Truck }>('/api/requests', { method: 'POST', body: JSON.stringify(b) }, true);
 
 // Poll one of your own requests; the API resolves stale offers as part of the read.
