@@ -5,6 +5,8 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { supabase } from '../../src/api';
 import { colors, font } from '../../src/theme';
 
+type AppRole = 'client' | 'driver';
+
 function first(value: string | string[] | undefined) {
   return Array.isArray(value) ? value[0] : value;
 }
@@ -14,7 +16,7 @@ export default function AuthCallbackScreen() {
   const router = useRouter();
   const code = first(params.code);
   const authError = first(params.error_description) ?? first(params.error);
-  const exchange = useRef<Promise<void> | null>(null);
+  const exchange = useRef<Promise<AppRole> | null>(null);
   const [message, setMessage] = useState('Finishing your Towber sign-in…');
   const [failed, setFailed] = useState(false);
 
@@ -32,13 +34,24 @@ export default function AuthCallbackScreen() {
         const { data, error } = await supabase.auth.exchangeCodeForSession(code!);
         if (error) throw error;
         if (!data.session) throw new Error('The sign-in link did not create a session. Request a fresh link and try again.');
+        const { data: profile, error: profileError } = await supabase
+          .from('user_profiles')
+          .select('role')
+          .eq('user_id', data.session.user.id)
+          .maybeSingle();
+        if (profileError) throw profileError;
+        if (profile?.role !== 'client' && profile?.role !== 'driver') {
+          throw new Error('Your Towber profile has no valid role. Ask an administrator to provision it.');
+        }
+        return profile.role;
       })();
     }
 
     void exchange.current
-      .then(() => {
-        if (active) setMessage('Sign-in complete. Loading your Towber profile…');
-        // RootLayout observes the SIGNED_IN event and routes using the stored profile role.
+      .then((role) => {
+        if (!active) return;
+        setMessage('Sign-in complete. Opening your Towber portal…');
+        router.replace(role === 'driver' ? '/(main)/driver' : '/(main)/client');
       })
       .catch((caught: unknown) => {
         if (!active) return;
