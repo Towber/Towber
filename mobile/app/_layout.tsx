@@ -19,6 +19,8 @@ type AuthState =
 
 export default function RootLayout() {
   const segments = useSegments() as string[];
+  const inAuthGroup = segments[0] === '(auth)';
+  const inAuthCallback = segments[0] === 'auth' && segments[1] === 'callback';
   const [authState, setAuthState] = useState<AuthState>({ status: 'loading' });
   const [retry, setRetry] = useState(0);
   const [fontsLoaded] = useFonts({
@@ -66,7 +68,8 @@ export default function RootLayout() {
     void loadRole();
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
       // Avoid calling Supabase auth methods while inside the auth callback lock.
-      if (event === 'INITIAL_SESSION') return;
+      if (event === 'INITIAL_SESSION' || event === 'TOKEN_REFRESHED') return;
+      setAuthState({ status: 'loading' });
       setTimeout(() => { if (active) void loadRole(session); }, 0);
     });
 
@@ -76,10 +79,11 @@ export default function RootLayout() {
     };
   }, [retry]);
 
-  if (!fontsLoaded || authState.status === 'loading') return <LoadingScreen />;
-
-  const inAuthGroup = segments[0] === '(auth)';
-  const inAuthCallback = segments[0] === 'auth' && segments[1] === 'callback';
+  if (!fontsLoaded) return <LoadingScreen />;
+  // Never redirect an existing guest session away from a magic-link callback
+  // before its PKCE code has been exchanged for the invited user's session.
+  if (inAuthCallback) return <AppFrame><Slot /></AppFrame>;
+  if (authState.status === 'loading') return <LoadingScreen />;
 
   if (authState.status === 'error') {
     const hint = authHint(authState.message);
@@ -101,13 +105,13 @@ export default function RootLayout() {
   }
 
   if (authState.status === 'signed_out') {
-    if (inAuthGroup || inAuthCallback) return <AppFrame><Slot /></AppFrame>;
+    if (inAuthGroup) return <AppFrame><Slot /></AppFrame>;
     return <Redirect href="/(auth)/sign-in" />;
   }
 
   const role = authState.role;
   const home = role === 'driver' ? '/(main)/driver' : '/(main)/client';
-  if (inAuthGroup || inAuthCallback) return <Redirect href={home} />;
+  if (inAuthGroup) return <Redirect href={home} />;
   if (segments[0] === '(main)' && segments[1] !== role) return <Redirect href={home} />;
 
   return <AppFrame><Slot /></AppFrame>;
