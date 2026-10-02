@@ -12,7 +12,7 @@ export function TruckMarker({ truck, selected, onPress }: { truck: Truck; select
   ).current;
 
   useEffect(() => {
-    (coord as any).timing({ latitude: truck.lat, longitude: truck.lng, duration: 1500, useNativeDriver: false }).start();
+    (coord as any).timing({ latitude: truck.lat, longitude: truck.lng, duration: 900, useNativeDriver: false }).start();
   }, [truck.lat, truck.lng, coord]);
 
   return (

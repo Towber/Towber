@@ -1,0 +1,65 @@
+name: EAS OTA Update
+
+on:
+  workflow_dispatch:
+    inputs:
+      channel:
+        description: EAS Update channel to publish to
+        type: choice
+        required: true
+        default: preview
+        options:
+          - preview
+          - production
+      message:
+        description: Short description shown in EAS update history
+        type: string
+        required: true
+        default: Towber OTA update
+
+permissions:
+  contents: read
+
+concurrency:
+  group: eas-update-${{ inputs.channel }}
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: mobile/package-lock.json
+
+      - name: Restrict production updates to main
+        if: ${{ inputs.channel == 'production' }}
+        run: |
+          if [[ "$GITHUB_REF" != "refs/heads/main" ]]; then
+            echo "Production OTA updates may only be published from main."
+            exit 1
+          fi
+
+      - name: Install mobile dependencies
+        working-directory: mobile
+        run: npm ci
+
+      - name: Publish EAS Update
+        working-directory: mobile
+        env:
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+          EAS_CHANNEL: ${{ inputs.channel }}
+          EAS_ENVIRONMENT: ${{ inputs.channel }}
+          UPDATE_MESSAGE: ${{ inputs.message }}
+        run: >-
+          npx eas-cli@latest update
+          --channel "$EAS_CHANNEL"
+          --environment "$EAS_ENVIRONMENT"
+          --message "$UPDATE_MESSAGE"
+          --non-interactive

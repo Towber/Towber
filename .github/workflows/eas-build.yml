@@ -13,21 +13,21 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 18
+          node-version: 22
+          cache: npm
+          cache-dependency-path: mobile/package-lock.json
 
       - name: Setup Expo EAS
         uses: expo/expo-github-action@v8
         with:
           eas-version: latest
+          packager: npm
           token: ${{ secrets.EXPO_TOKEN }}
 
       - name: Install dependencies
-        run: |
-          cd mobile
-          npm install
+        working-directory: mobile
+        run: npm ci
 
       - name: Run EAS Build
-        run: |
-          cd mobile
-          npx eas-cli@latest build --platform android --profile preview --non-interactive
-
+        working-directory: mobile
+        run: npx eas-cli@latest build --platform android --profile preview --non-interactive

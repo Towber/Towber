@@ -22,7 +22,7 @@ export const font = {
 };
 
 export const zar = (n: number) => `R ${Math.round(n).toLocaleString('en-ZA').replace(/\u00a0/g, ' ')}`;
-export const zarRange = (a: number, b: number) => `${zar(a)} – ${zar(b)}`;
+export const zarRange = (a: number, b: number) => Math.round(a) === Math.round(b) ? zar(a) : `${zar(a)} – ${zar(b)}`;
 
 export const darkMapStyle = [
   { elementType: 'geometry', stylers: [{ color: '#0F172A' }] },

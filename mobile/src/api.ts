@@ -26,7 +26,30 @@ export type Truck = {
   priceMax: number;
 };
 
-// Motorists sign in anonymously so requests are tied to a real auth user.
+export type DriverLocation = LatLng & {
+  vehicleId: string;
+  heading: number | null;
+  speedMps: number | null;
+  recordedAt?: string;
+};
+
+export type LocationChannelStatus = 'connecting' | 'connected' | 'error';
+export type BreakdownType = 'flatbed' | 'jumpstart' | 'lockout';
+export type PlaceSuggestion = {
+  placeId: string;
+  description: string;
+  primaryText: string;
+  secondaryText: string;
+};
+export type RoadRoute = {
+  destination: LatLng;
+  address: string;
+  distanceKm: number;
+  durationMinutes: number | null;
+  coordinates: LatLng[];
+};
+
+// Motorists sign in anonymously so requests are tied to an auth user.
 // Enable "Anonymous sign-ins" in Supabase > Authentication > Providers.
 async function token() {
   const { data } = await supabase.auth.getSession();
@@ -50,16 +73,98 @@ export const fetchNearby = (p: LatLng, distanceKm: number) =>
     `/api/vehicles/nearby?lat=${p.lat}&lng=${p.lng}&distance_km=${distanceKm}`,
   ).then((r) => r.vehicles);
 
-export const createRequest = (b: { pickup: LatLng; dropoff: LatLng; vehicleId: string; tripDistanceKm: number }) =>
-  call<{ request: { id: string; status: string } }>('/api/requests', { method: 'POST', body: JSON.stringify(b) }, true);
+export function fetchPlaceSuggestions(input: string, origin: LatLng, sessionToken: string) {
+  return call<{ suggestions: PlaceSuggestion[] }>('/api/places/autocomplete', {
+    method: 'POST',
+    body: JSON.stringify({ input, origin, sessionToken }),
+  }, true).then((r) => r.suggestions);
+}
 
-// Live positions broadcast by the API whenever a driver pings their location.
-export function subscribeFleet(onMove: (m: { vehicleId: string; lat: number; lng: number }) => void) {
-  const ch = supabase
-    .channel('fleet')
-    .on('broadcast', { event: 'position' }, ({ payload }) => onMove(payload))
-    .subscribe();
-  return () => { supabase.removeChannel(ch); };
+function decodePolyline(encoded: string): LatLng[] {
+  const points: LatLng[] = [];
+  let index = 0;
+  let lat = 0;
+  let lng = 0;
+  while (index < encoded.length) {
+    let result = 0;
+    let shift = 0;
+    let byte: number;
+    do {
+      byte = encoded.charCodeAt(index++) - 63;
+      result |= (byte & 0x1f) << shift;
+      shift += 5;
+    } while (byte >= 0x20 && index < encoded.length);
+    lat += (result & 1) ? ~(result >> 1) : result >> 1;
+
+    result = 0;
+    shift = 0;
+    do {
+      byte = encoded.charCodeAt(index++) - 63;
+      result |= (byte & 0x1f) << shift;
+      shift += 5;
+    } while (byte >= 0x20 && index < encoded.length);
+    lng += (result & 1) ? ~(result >> 1) : result >> 1;
+    points.push({ lat: lat / 1e5, lng: lng / 1e5 });
+  }
+  return points;
+}
+
+export function fetchRoadRoute(origin: LatLng, placeId: string, sessionToken: string) {
+  return call<Omit<RoadRoute, 'coordinates'> & { encodedPolyline: string }>('/api/routes', {
+    method: 'POST',
+    body: JSON.stringify({ origin, placeId, sessionToken }),
+  }, true).then((route): RoadRoute => ({
+    ...route,
+    coordinates: decodePolyline(route.encodedPolyline),
+  }));
+}
+
+export const createRequest = (b: { pickup: LatLng; dropoff: LatLng; vehicleId: string; tripDistanceKm: number; breakdownType: BreakdownType }) =>
+  call<{ request: { id: string; status: string; estimated_price_min: number; estimated_price_max: number } }>('/api/requests', { method: 'POST', body: JSON.stringify(b) }, true);
+
+export function sendDriverLocation(vehicleId: string, position: DriverLocation) {
+  return call<void>(`/api/vehicles/${encodeURIComponent(vehicleId)}/location`, {
+    method: 'PATCH',
+    body: JSON.stringify({
+      lat: position.lat,
+      lng: position.lng,
+      heading: position.heading,
+      speedMps: position.speedMps,
+    }),
+  }, true);
+}
+
+// Request-specific private topics prevent the old public "fleet" channel from
+// exposing every operator's location to every app session.
+export async function subscribeRequestDriverLocation(
+  requestId: string,
+  onMove: (location: DriverLocation) => void,
+  onStatus?: (status: LocationChannelStatus) => void,
+) {
+  await token();
+  await supabase.realtime.setAuth();
+
+  const channel = supabase
+    .channel(`tow-request:${requestId}`, { config: { private: true } })
+    .on('broadcast', { event: 'driver_location' }, ({ payload }) => {
+      const p = payload as Partial<DriverLocation> | null;
+      if (!p || typeof p.vehicleId !== 'string' || !Number.isFinite(p.lat) || !Number.isFinite(p.lng)) return;
+      onMove({
+        vehicleId: p.vehicleId,
+        lat: Number(p.lat),
+        lng: Number(p.lng),
+        heading: typeof p.heading === 'number' ? p.heading : null,
+        speedMps: typeof p.speedMps === 'number' ? p.speedMps : null,
+        recordedAt: typeof p.recordedAt === 'string' ? p.recordedAt : undefined,
+      });
+    })
+    .subscribe((status) => {
+      if (status === 'SUBSCRIBED') onStatus?.('connected');
+      else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED') onStatus?.('error');
+      else onStatus?.('connecting');
+    });
+
+  return () => { void supabase.removeChannel(channel); };
 }
 
 // Straight-line distance x 1.3 as a road-distance stand-in.

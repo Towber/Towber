@@ -1,0 +1,2 @@
+# Supabase CLI project configuration. Local database/auth defaults are used unless overridden.
+project_id = "towber"
