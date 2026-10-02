@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
-import { Redirect, Stack, useSegments } from 'expo-router';
+import { Redirect, Slot, useSegments } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
@@ -94,7 +94,7 @@ export default function RootLayout() {
   }
 
   const role = authState.role;
-  if (segments[0] !== '(main)' || segments[1] !== role) {
+  if (segments[0] === '(main)' && segments[1] !== role) {
     return <Redirect href={role === 'driver' ? '/(main)/driver' : '/(main)/client'} />;
   }
 
@@ -102,9 +102,7 @@ export default function RootLayout() {
     <GestureHandlerRootView style={styles.root}>
       <SafeAreaProvider>
         <StatusBar style="light" />
-        <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: colors.bg } }}>
-          <Stack.Screen name="(main)" options={{ headerShown: false }} />
-        </Stack>
+        <Slot />
       </SafeAreaProvider>
     </GestureHandlerRootView>
   );
