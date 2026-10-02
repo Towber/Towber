@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Alert, FlatList, Linking, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Alert, FlatList, Linking, Modal, Pressable, StyleSheet, Switch, Text, View } from 'react-native';
 import MapView, { Marker, Polyline, PROVIDER_GOOGLE } from 'react-native-maps';
 import BottomSheet, { BottomSheetView } from '@gorhom/bottom-sheet';
 import { BlurView } from 'expo-blur';
@@ -34,9 +34,13 @@ const Glass = ({ style }: { style?: any }) => (
 );
 
 export default function HomeScreen() {
-  const { bottom } = useSafeAreaInsets();
+  const { top, bottom } = useSafeAreaInsets();
   const map = useRef<MapView>(null);
   const [me, setMe] = useState<LatLng | null>(null);
+  const [pickupLabel, setPickupLabel] = useState('Your location');
+  const [pickupSearchQuery, setPickupSearchQuery] = useState('');
+  const [pickupEditing, setPickupEditing] = useState(false);
+  const [searchMode, setSearchMode] = useState<'pickup' | 'destination'>('destination');
   const [dest, setDest] = useState<LatLng | null>(null);
   const [route, setRoute] = useState<RoadRoute | null>(null);
   const [trucks, setTrucks] = useState<Truck[]>([]);
@@ -53,6 +57,8 @@ export default function HomeScreen() {
   const [activeRequestId, setActiveRequestId] = useState<string | null>(null);
   const [trackingState, setTrackingState] = useState<TrackingState>('idle');
   const [breakdownType, setBreakdownType] = useState<BreakdownType>('flatbed');
+  const [drawerVisible, setDrawerVisible] = useState(false);
+  const [darkMapEnabled, setDarkMapEnabled] = useState(false);
 
   const tripKm = useMemo(() => route?.distanceKm ?? (me && dest ? roadKm(me, dest) : DEFAULT_TRIP_KM), [me, dest, route]);
   const selected = trucks.find((t) => t.vehicleId === selectedId) ?? null;
@@ -75,8 +81,8 @@ export default function HomeScreen() {
 
   // Debounced Places (New) search, biased toward the motorist and restricted to South Africa.
   useEffect(() => {
-    const query = searchQuery.trim();
-    if (!me || query.length < 3 || dest) {
+    const query = (searchMode === 'pickup' ? pickupSearchQuery : searchQuery).trim();
+    if (!me || query.length < 3 || (searchMode === 'destination' && dest)) {
       setPlaceSuggestions([]);
       setSuggesting(false);
       return;
@@ -100,7 +106,7 @@ export default function HomeScreen() {
         .finally(() => { if (current) setSuggesting(false); });
     }, 350);
     return () => { current = false; clearTimeout(timer); };
-  }, [searchQuery, me, dest]);
+  }, [searchMode, pickupSearchQuery, searchQuery, me, dest]);
 
   // 2) Load nearby trucks + dynamic ZAR quotes, refresh every 30s.
   const load = useCallback(async () => {
@@ -170,6 +176,7 @@ export default function HomeScreen() {
   }, [me, dest]);
 
   const changeDestinationQuery = (query: string) => {
+    setSearchMode('destination');
     setSearchQuery(query);
     setDest(null);
     setRoute(null);
@@ -177,23 +184,38 @@ export default function HomeScreen() {
     setPlaceSuggestions([]);
   };
 
-  const selectDestination = async (suggestion: PlaceSuggestion) => {
+  const selectPlace = async (suggestion: PlaceSuggestion) => {
     if (!me) return;
+    const selectingPickup = searchMode === 'pickup';
     setPlaceSuggestions([]);
-    setSearchQuery('');
     setSearchError(null);
     setSearching(true);
     const selectedSessionToken = placesSessionToken.current;
     placesSessionToken.current = newPlacesSessionToken();
     try {
       const drivingRoute = await fetchRoadRoute(me, suggestion.placeId, selectedSessionToken);
-      if (drivingRoute.coordinates.length < 2) throw new Error('No road route was returned. Choose another destination.');
-      setRoute(drivingRoute);
-      setDest(drivingRoute.destination);
+      if (selectingPickup) {
+        setMe(drivingRoute.destination);
+        setPickupLabel(drivingRoute.address || suggestion.description);
+        setPickupSearchQuery('');
+        setPickupEditing(false);
+        setSearchMode('destination');
+        setSearchQuery('');
+        setRoute(null);
+        setDest(null);
+        setSelectedId(null);
+      } else {
+        if (drivingRoute.coordinates.length < 2) throw new Error('No road route was returned. Choose another destination.');
+        setSearchQuery(suggestion.description);
+        setRoute(drivingRoute);
+        setDest(drivingRoute.destination);
+      }
       Haptics.selectionAsync();
     } catch (error: unknown) {
-      setDest(null);
-      setRoute(null);
+      if (!selectingPickup) {
+        setDest(null);
+        setRoute(null);
+      }
       setSearchError(error instanceof Error ? error.message : 'Could not build a driving route. Try another destination.');
     } finally {
       setSearching(false);
@@ -227,6 +249,16 @@ export default function HomeScreen() {
     }
   };
 
+  const callEmergencyServices = () => {
+    setDrawerVisible(false);
+    void Linking.openURL('tel:112').catch(() => Alert.alert('Unable to place call', 'Call emergency services at 112.'));
+  };
+
+  const signOutFromDrawer = async () => {
+    setDrawerVisible(false);
+    await switchAccount();
+  };
+
   const needsDest = !dest;
   const quoteRefreshing = quoteDistanceKm !== tripKm;
   const trackingCopy: Record<Exclude<TrackingState, 'idle'>, string> = {
@@ -241,8 +273,8 @@ export default function HomeScreen() {
         ref={map}
         style={StyleSheet.absoluteFill}
         provider={PROVIDER_GOOGLE}
-        customMapStyle={darkMapStyle}
-        userInterfaceStyle="dark"
+        customMapStyle={darkMapEnabled ? darkMapStyle : []}
+        userInterfaceStyle={darkMapEnabled ? 'dark' : 'light'}
         showsUserLocation
         showsMyLocationButton={false}
         toolbarEnabled={false}
@@ -261,25 +293,89 @@ export default function HomeScreen() {
       </MapView>
 
       <SearchBar
-        pickupLabel={me ? 'Your location' : 'Finding you…'}
+        pickupLabel={me ? pickupLabel : 'Finding you…'}
+        pickupValue={pickupSearchQuery}
+        pickupEditing={pickupEditing}
+        activeSearch={searchMode}
         busy={searching || suggesting}
         suggestions={placeSuggestions}
         searchError={searchError}
         routeSummary={route ? `${route.distanceKm.toFixed(1)} km · ${route.durationMinutes ? `about ${route.durationMinutes} min` : 'ETA unavailable'}` : null}
+        onPickupFocus={() => {
+          setSearchMode('pickup');
+          if (!pickupEditing) {
+            setPickupEditing(true);
+            setPickupSearchQuery('');
+            setPlaceSuggestions([]);
+          }
+          setSearchError(null);
+        }}
+        onPickupQueryChange={(query) => {
+          setSearchMode('pickup');
+          setPickupSearchQuery(query);
+          setSearchError(null);
+        }}
+        onDestinationFocus={() => setSearchMode('destination')}
         onQueryChange={changeDestinationQuery}
         onSubmit={setSearchQuery}
-        onSelect={selectDestination}
+        onSelect={selectPlace}
       />
 
-      {/* Emergency: 112 works from any SA mobile network */}
       <Pressable
-        onPress={() => Linking.openURL('tel:112')}
-        accessibilityRole="button" accessibilityLabel="Call emergency services, 112"
-        style={s.sos}
+        onPress={() => setDrawerVisible(true)}
+        accessibilityRole="button"
+        accessibilityLabel="Open menu"
+        style={[s.menuButton, { top: top + 124 }]}
       >
-        <Ionicons name="call" size={18} color={colors.text} />
-        <Text style={s.sosText}>SOS</Text>
+        <Ionicons name="menu" size={25} color={colors.surface} />
       </Pressable>
+
+      <Modal visible={drawerVisible} transparent animationType="fade" statusBarTranslucent onRequestClose={() => setDrawerVisible(false)}>
+        <View style={s.drawerOverlay}>
+          <Pressable accessibilityLabel="Close menu" style={StyleSheet.absoluteFill} onPress={() => setDrawerVisible(false)} />
+          <View style={[s.drawer, { paddingTop: top + 18, paddingBottom: bottom + 18 }]}>
+            <View style={s.drawerHeader}>
+              <View>
+                <Text style={s.drawerEyebrow}>TOWBER</Text>
+                <Text style={s.drawerTitle}>Menu</Text>
+              </View>
+              <Pressable accessibilityRole="button" accessibilityLabel="Close menu" onPress={() => setDrawerVisible(false)} style={s.closeButton}>
+                <Ionicons name="close" size={22} color={colors.text} />
+              </Pressable>
+            </View>
+
+            <Pressable accessibilityRole="button" accessibilityLabel="Call emergency services, 112" onPress={callEmergencyServices} style={s.emergencyAction}>
+              <View style={s.actionIconRed}><Ionicons name="call" size={19} color="#FFFFFF" /></View>
+              <View style={s.actionCopy}>
+                <Text style={s.emergencyTitle}>Emergency SOS</Text>
+                <Text style={s.emergencySubtext}>Call emergency services · 112</Text>
+              </View>
+              <Ionicons name="chevron-forward" size={18} color="#FFFFFF" />
+            </Pressable>
+
+            <View style={s.appearanceAction}>
+              <View style={s.actionIcon}><Ionicons name={darkMapEnabled ? 'moon' : 'sunny'} size={19} color={colors.go} /></View>
+              <View style={s.actionCopy}>
+                <Text style={s.actionTitle}>Map appearance</Text>
+                <Text style={s.actionSubtext}>{darkMapEnabled ? 'Dark map' : 'Light map'}</Text>
+              </View>
+              <Switch
+                accessibilityLabel="Toggle dark map"
+                value={darkMapEnabled}
+                onValueChange={setDarkMapEnabled}
+                trackColor={{ false: '#475569', true: colors.go }}
+                thumbColor="#FFFFFF"
+              />
+            </View>
+
+            <View style={s.drawerSpacer} />
+            <Pressable accessibilityRole="button" onPress={() => { void signOutFromDrawer(); }} style={s.signOutAction}>
+              <Ionicons name="log-out-outline" size={20} color={colors.text} />
+              <Text style={s.signOutLabel}>Log out / Sign out</Text>
+            </Pressable>
+          </View>
+        </View>
+      </Modal>
 
       <BottomSheet snapPoints={[310, '66%']} index={0} backgroundComponent={Glass} handleIndicatorStyle={{ backgroundColor: colors.textMuted, width: 40 }}>
         <BottomSheetView style={s.sheet}>
@@ -287,9 +383,6 @@ export default function HomeScreen() {
             <Text style={s.title}>{activeRequestId ? 'Your tow request' : 'Nearby tow trucks'}</Text>
             <View style={s.headActions}>
               {!loading && <Text style={s.count}>{trucks.length} available</Text>}
-              <Pressable accessibilityRole="button" accessibilityLabel="Sign out and switch account" onPress={() => { void switchAccount(); }} hitSlop={10}>
-                <Ionicons name="log-out-outline" size={18} color={colors.textMuted} />
-              </Pressable>
             </View>
           </View>
           <View style={s.serviceSection}>
@@ -367,6 +460,23 @@ const s = StyleSheet.create({
   cta: { marginHorizontal: 16, height: 54, borderRadius: 16, backgroundColor: colors.go, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 12 },
   ctaOff: { backgroundColor: colors.surfaceRaised },
   ctaText: { color: colors.bg, fontFamily: font.bold, fontSize: 15 },
-  sos: { position: 'absolute', right: 16, top: '34%', flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: colors.danger, paddingHorizontal: 14, height: 40, borderRadius: radius.pill },
-  sosText: { color: colors.text, fontFamily: font.bold, fontSize: 13 },
+  menuButton: { position: 'absolute', right: 18, width: 48, height: 48, borderRadius: 24, backgroundColor: '#FFFFFF', alignItems: 'center', justifyContent: 'center', elevation: 7, shadowColor: '#000000', shadowOpacity: 0.18, shadowRadius: 10, shadowOffset: { width: 0, height: 4 }, zIndex: 5 },
+  drawerOverlay: { flex: 1, flexDirection: 'row', backgroundColor: 'rgba(2,6,23,0.58)' },
+  drawer: { width: '84%', maxWidth: 360, minHeight: '100%', backgroundColor: colors.surface, borderRightWidth: 1, borderRightColor: colors.border, paddingHorizontal: 22 },
+  drawerHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 30 },
+  drawerEyebrow: { color: colors.go, fontFamily: font.bold, fontSize: 10, letterSpacing: 2.5 },
+  drawerTitle: { color: colors.text, fontFamily: font.bold, fontSize: 25, marginTop: 5 },
+  closeButton: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.surfaceRaised },
+  emergencyAction: { minHeight: 76, flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 14, borderRadius: 18, backgroundColor: '#DC2626', marginBottom: 14 },
+  actionIconRed: { width: 40, height: 40, borderRadius: 14, backgroundColor: 'rgba(255,255,255,0.18)', alignItems: 'center', justifyContent: 'center' },
+  actionCopy: { flex: 1, gap: 4 },
+  emergencyTitle: { color: '#FFFFFF', fontFamily: font.bold, fontSize: 15 },
+  emergencySubtext: { color: 'rgba(255,255,255,0.84)', fontFamily: font.medium, fontSize: 11 },
+  appearanceAction: { minHeight: 76, flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 14, borderRadius: 18, borderWidth: 1, borderColor: colors.border, backgroundColor: 'rgba(30,41,59,0.52)' },
+  actionIcon: { width: 40, height: 40, borderRadius: 14, backgroundColor: 'rgba(0,230,118,0.1)', alignItems: 'center', justifyContent: 'center' },
+  actionTitle: { color: colors.text, fontFamily: font.semibold, fontSize: 14 },
+  actionSubtext: { color: colors.textMuted, fontFamily: font.medium, fontSize: 11 },
+  drawerSpacer: { flex: 1 },
+  signOutAction: { minHeight: 54, flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 14, borderRadius: 16, backgroundColor: colors.surfaceRaised, marginBottom: 12 },
+  signOutLabel: { color: colors.text, fontFamily: font.semibold, fontSize: 14 },
 });

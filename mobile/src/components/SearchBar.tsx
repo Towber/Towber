@@ -8,16 +8,22 @@ import { colors, font } from '../theme';
 
 type Props = {
   pickupLabel: string;
+  pickupValue: string;
+  pickupEditing: boolean;
+  activeSearch: 'pickup' | 'destination';
   busy: boolean;
   suggestions: PlaceSuggestion[];
   searchError?: string | null;
   routeSummary?: string | null;
+  onPickupFocus: () => void;
+  onPickupQueryChange: (query: string) => void;
+  onDestinationFocus: () => void;
   onQueryChange: (query: string) => void;
   onSubmit: (query: string) => void;
   onSelect: (suggestion: PlaceSuggestion) => void;
 };
 
-export function SearchBar({ pickupLabel, busy, suggestions, searchError, routeSummary, onQueryChange, onSubmit, onSelect }: Props) {
+export function SearchBar({ pickupLabel, pickupValue, pickupEditing, activeSearch, busy, suggestions, searchError, routeSummary, onPickupFocus, onPickupQueryChange, onDestinationFocus, onQueryChange, onSubmit, onSelect }: Props) {
   const { top } = useSafeAreaInsets();
   const [q, setQ] = useState('');
   return (
@@ -25,13 +31,23 @@ export function SearchBar({ pickupLabel, busy, suggestions, searchError, routeSu
       <BlurView intensity={40} tint="dark" style={s.glass}>
         <View style={s.row}>
           <View style={[s.dot, { backgroundColor: colors.go }]} />
-          <Text style={s.pickup} numberOfLines={1}>{pickupLabel}</Text>
+          <TextInput
+            value={pickupEditing ? pickupValue : pickupLabel}
+            onFocus={onPickupFocus}
+            onChangeText={onPickupQueryChange}
+            placeholder="Your location"
+            placeholderTextColor={colors.textMuted}
+            style={s.pickup}
+            returnKeyType="search"
+            accessibilityLabel="Pickup location"
+          />
         </View>
         <View style={s.divider} />
         <View style={s.row}>
           <View style={[s.dot, { backgroundColor: colors.route, borderRadius: 2 }]} />
           <TextInput
             value={q}
+            onFocus={onDestinationFocus}
             onChangeText={(text) => { setQ(text); onQueryChange(text); }}
             placeholder="Where should we tow it?"
             placeholderTextColor={colors.textMuted}
@@ -51,7 +67,7 @@ export function SearchBar({ pickupLabel, busy, suggestions, searchError, routeSu
               key={suggestion.placeId}
               accessibilityRole="button"
               accessibilityLabel={`Select ${suggestion.description}`}
-              onPress={() => { setQ(suggestion.description); onSelect(suggestion); }}
+              onPress={() => { if (activeSearch === 'destination') setQ(suggestion.description); onSelect(suggestion); }}
               style={s.result}
             >
               <Ionicons name="location-outline" size={18} color={colors.route} />
