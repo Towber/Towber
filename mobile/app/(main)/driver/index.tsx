@@ -28,6 +28,7 @@ function mapJob(row: Record<string, unknown>): JobAlert | null {
 
 export default function DriverRoute() {
   const { top } = useSafeAreaInsets();
+  const [isDarkMode, setIsDarkMode] = useState(true);
   const [vehicleId, setVehicleId] = useState<string | null>(null);
   const [assignmentLoading, setAssignmentLoading] = useState(true);
   const [assignmentError, setAssignmentError] = useState<string | null>(null);
@@ -154,8 +155,8 @@ export default function DriverRoute() {
       <MapView
         style={StyleSheet.absoluteFill}
         provider={PROVIDER_GOOGLE}
-        customMapStyle={darkMapStyle}
-        userInterfaceStyle="dark"
+        customMapStyle={isDarkMode ? darkMapStyle : []}
+        userInterfaceStyle={isDarkMode ? 'dark' : 'light'}
         showsUserLocation={online}
         showsMyLocationButton={false}
         toolbarEnabled={false}
@@ -185,9 +186,19 @@ export default function DriverRoute() {
             </View>
           )}
         </View>
-        <Pressable accessibilityRole="button" accessibilityLabel="Sign out and switch account" onPress={() => { void switchAccount(); }} style={styles.signOutButton}>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={`Switch to ${isDarkMode ? 'light' : 'dark'} map mode`}
+          onPress={() => setIsDarkMode((value) => !value)}
+          style={styles.themeToggle}
+          hitSlop={6}
+        >
+          <Ionicons name={isDarkMode ? 'sunny-outline' : 'moon-outline'} size={17} color={colors.text} />
+          <Text style={styles.themeToggleText}>{isDarkMode ? 'Light' : 'Dark'}</Text>
+        </Pressable>
+        <Pressable accessibilityRole="button" accessibilityLabel="Log out" onPress={() => { void switchAccount(); }} style={styles.signOutButton} hitSlop={6}>
           <Ionicons name="log-out-outline" size={15} color={colors.textMuted} />
-          <Text style={styles.signOutText}>Switch account</Text>
+          <Text style={styles.signOutText}>Log Out</Text>
         </Pressable>
         {locationError && <View style={styles.errorCard}><Ionicons name="warning-outline" size={17} color={colors.warn} /><Text style={styles.errorText}>{locationError}</Text></View>}
         {online && <View style={styles.onlinePill}><View style={styles.onlineDot} /><Text style={styles.onlinePillText}>Sharing location · waiting for jobs</Text></View>}
@@ -231,7 +242,9 @@ const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.bg },
   overlay: { ...StyleSheet.absoluteFill, paddingHorizontal: 16, gap: 10 },
   statusCard: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 16, padding: 18, borderRadius: radius.card, backgroundColor: 'rgba(15,23,42,0.94)', borderWidth: 1, borderColor: colors.border },
-  signOutButton: { alignSelf: 'flex-end', flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 11, paddingVertical: 8, borderRadius: 12, backgroundColor: 'rgba(15,23,42,0.94)' },
+  themeToggle: { alignSelf: 'flex-end', minHeight: 40, flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 12, borderRadius: radius.pill, backgroundColor: 'rgba(15,23,42,0.9)', borderWidth: 1, borderColor: colors.border },
+  themeToggleText: { color: colors.text, fontFamily: font.semibold, fontSize: 12 },
+  signOutButton: { alignSelf: 'flex-end', minHeight: 44, flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 12, borderRadius: 12, backgroundColor: 'rgba(15,23,42,0.94)', borderWidth: 1, borderColor: colors.border },
   signOutText: { color: colors.textMuted, fontFamily: font.semibold, fontSize: 12 },
   statusCopy: { flex: 1, gap: 4 },
   eyebrow: { color: colors.route, fontFamily: font.bold, fontSize: 10, letterSpacing: 1.4 },

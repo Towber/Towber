@@ -34,8 +34,9 @@ const Glass = ({ style }: { style?: any }) => (
 );
 
 export default function HomeScreen() {
-  const { bottom } = useSafeAreaInsets();
+  const { bottom, top } = useSafeAreaInsets();
   const map = useRef<MapView>(null);
+  const [isDarkMode, setIsDarkMode] = useState(true);
   const [me, setMe] = useState<LatLng | null>(null);
   const [dest, setDest] = useState<LatLng | null>(null);
   const [route, setRoute] = useState<RoadRoute | null>(null);
@@ -241,8 +242,8 @@ export default function HomeScreen() {
         ref={map}
         style={StyleSheet.absoluteFill}
         provider={PROVIDER_GOOGLE}
-        customMapStyle={darkMapStyle}
-        userInterfaceStyle="dark"
+        customMapStyle={isDarkMode ? darkMapStyle : []}
+        userInterfaceStyle={isDarkMode ? 'dark' : 'light'}
         showsUserLocation
         showsMyLocationButton={false}
         toolbarEnabled={false}
@@ -271,6 +272,17 @@ export default function HomeScreen() {
         onSelect={selectDestination}
       />
 
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel={`Switch to ${isDarkMode ? 'light' : 'dark'} map mode`}
+        onPress={() => setIsDarkMode((value) => !value)}
+        style={[s.themeToggle, { top: top + 154 }]}
+        hitSlop={6}
+      >
+        <Ionicons name={isDarkMode ? 'sunny-outline' : 'moon-outline'} size={17} color={colors.text} />
+        <Text style={s.themeToggleText}>{isDarkMode ? 'Light' : 'Dark'}</Text>
+      </Pressable>
+
       {/* Emergency: 112 works from any SA mobile network */}
       <Pressable
         onPress={() => Linking.openURL('tel:112')}
@@ -285,12 +297,7 @@ export default function HomeScreen() {
         <BottomSheetView style={s.sheet}>
           <View style={s.head}>
             <Text style={s.title}>{activeRequestId ? 'Your tow request' : 'Nearby tow trucks'}</Text>
-            <View style={s.headActions}>
-              {!loading && <Text style={s.count}>{trucks.length} available</Text>}
-              <Pressable accessibilityRole="button" accessibilityLabel="Sign out and switch account" onPress={() => { void switchAccount(); }} hitSlop={10}>
-                <Ionicons name="log-out-outline" size={18} color={colors.textMuted} />
-              </Pressable>
-            </View>
+            {!loading && <Text style={s.count}>{trucks.length} available</Text>}
           </View>
           <View style={s.serviceSection}>
             <Text style={s.servicePrompt}>Breakdown service</Text>
@@ -328,21 +335,33 @@ export default function HomeScreen() {
             />
           )}
 
-          <Pressable
-            onPress={request}
-            disabled={!selected || needsDest || quoteRefreshing || requesting || !!activeRequestId}
-            accessibilityRole="button"
-            style={[s.cta, (!selected || needsDest || requesting || !!activeRequestId) && s.ctaOff, { marginBottom: bottom + 8 }]}
-          >
-            <Text style={s.ctaText}>
-              {activeRequestId ? 'Tow requested · tracking this driver'
-                : needsDest ? 'Enter a destination for your price'
-                : !selected ? 'Choose a truck'
-                : quoteRefreshing ? 'Updating route-based ZAR estimate…'
-                : requesting ? 'Sending request…'
-                : `Request Tow  ·  ${zarRange(selected.priceMin, selected.priceMax)}`}
-            </Text>
-          </Pressable>
+          <View style={[s.bottomControls, { marginBottom: bottom + 8 }]}>
+            <Pressable
+              onPress={request}
+              disabled={!selected || needsDest || quoteRefreshing || requesting || !!activeRequestId}
+              accessibilityRole="button"
+              style={[s.cta, (!selected || needsDest || requesting || !!activeRequestId) && s.ctaOff]}
+            >
+              <Text style={s.ctaText}>
+                {activeRequestId ? 'Tow requested · tracking this driver'
+                  : needsDest ? 'Enter a destination for your price'
+                  : !selected ? 'Choose a truck'
+                  : quoteRefreshing ? 'Updating route-based ZAR estimate…'
+                  : requesting ? 'Sending request…'
+                  : `Request Tow  ·  ${zarRange(selected.priceMin, selected.priceMax)}`}
+              </Text>
+            </Pressable>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Log out"
+              onPress={() => { void switchAccount(); }}
+              style={s.logoutButton}
+              hitSlop={6}
+            >
+              <Ionicons name="log-out-outline" size={19} color={colors.text} />
+              <Text style={s.logoutText}>Log Out</Text>
+            </Pressable>
+          </View>
         </BottomSheetView>
       </BottomSheet>
     </View>
@@ -353,7 +372,6 @@ const s = StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.bg },
   sheet: { gap: 14, paddingBottom: 8 },
   head: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'baseline', paddingHorizontal: 20 },
-  headActions: { flexDirection: 'row', alignItems: 'center', gap: 12 },
   title: { color: colors.text, fontFamily: font.bold, fontSize: 18 },
   count: { color: colors.textMuted, fontFamily: font.medium, fontSize: 13 },
   serviceSection: { gap: 8 },
@@ -364,9 +382,14 @@ const s = StyleSheet.create({
   serviceName: { color: colors.textMuted, fontFamily: font.semibold, fontSize: 12 },
   tracking: { color: colors.route, fontFamily: font.medium, fontSize: 12, paddingHorizontal: 20 },
   empty: { color: colors.textMuted, fontFamily: font.medium, fontSize: 14, paddingHorizontal: 20, lineHeight: 20 },
-  cta: { marginHorizontal: 16, height: 54, borderRadius: 16, backgroundColor: colors.go, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 12 },
+  themeToggle: { position: 'absolute', right: 16, minHeight: 40, flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 12, borderRadius: radius.pill, backgroundColor: 'rgba(15,23,42,0.9)', borderWidth: 1, borderColor: colors.border },
+  themeToggleText: { color: colors.text, fontFamily: font.semibold, fontSize: 12 },
+  bottomControls: { flexDirection: 'row', alignItems: 'stretch', gap: 10, paddingHorizontal: 16 },
+  cta: { flex: 1, height: 54, borderRadius: 16, backgroundColor: colors.go, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 12 },
   ctaOff: { backgroundColor: colors.surfaceRaised },
   ctaText: { color: colors.bg, fontFamily: font.bold, fontSize: 15 },
+  logoutButton: { minWidth: 92, minHeight: 54, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7, borderRadius: 16, backgroundColor: colors.surfaceRaised, borderWidth: 1, borderColor: colors.border, paddingHorizontal: 12 },
+  logoutText: { color: colors.text, fontFamily: font.bold, fontSize: 12 },
   sos: { position: 'absolute', right: 16, top: '34%', flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: colors.danger, paddingHorizontal: 14, height: 40, borderRadius: radius.pill },
   sosText: { color: colors.text, fontFamily: font.bold, fontSize: 13 },
 });
