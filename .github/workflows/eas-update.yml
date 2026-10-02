@@ -57,9 +57,10 @@ jobs:
           EAS_CHANNEL: ${{ inputs.channel }}
           EAS_ENVIRONMENT: ${{ inputs.channel }}
           UPDATE_MESSAGE: ${{ inputs.message }}
+          CI: "1"
         run: >-
           npx eas-cli@latest update
           --channel "$EAS_CHANNEL"
+          --platform android
           --environment "$EAS_ENVIRONMENT"
           --message "$UPDATE_MESSAGE"
-          --non-interactive
