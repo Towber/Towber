@@ -15,6 +15,7 @@ type Props = {
   suggestions: PlaceSuggestion[];
   searchError?: string | null;
   routeSummary?: string | null;
+  showDestination?: boolean;
   onPickupFocus: () => void;
   onPickupQueryChange: (query: string) => void;
   onDestinationFocus: () => void;
@@ -23,7 +24,7 @@ type Props = {
   onSelect: (suggestion: PlaceSuggestion) => void;
 };
 
-export function SearchBar({ pickupLabel, pickupValue, pickupEditing, activeSearch, busy, suggestions, searchError, routeSummary, onPickupFocus, onPickupQueryChange, onDestinationFocus, onQueryChange, onSubmit, onSelect }: Props) {
+export function SearchBar({ pickupLabel, pickupValue, pickupEditing, activeSearch, busy, suggestions, searchError, routeSummary, showDestination = true, onPickupFocus, onPickupQueryChange, onDestinationFocus, onQueryChange, onSubmit, onSelect }: Props) {
   const { top } = useSafeAreaInsets();
   const [q, setQ] = useState('');
   return (
@@ -42,8 +43,8 @@ export function SearchBar({ pickupLabel, pickupValue, pickupEditing, activeSearc
             accessibilityLabel="Pickup location"
           />
         </View>
-        <View style={s.divider} />
-        <View style={s.row}>
+        {showDestination ? <View style={s.divider} /> : null}
+        {showDestination ? <View style={s.row}>
           <View style={[s.dot, { backgroundColor: light.text, borderRadius: 2 }]} />
           <TextInput
             value={q}
@@ -57,7 +58,7 @@ export function SearchBar({ pickupLabel, pickupValue, pickupEditing, activeSearc
             accessibilityLabel="Tow destination"
           />
           {busy ? <ActivityIndicator color={light.go} /> : <Ionicons name="search" size={18} color={light.textMuted} />}
-        </View>
+        </View> : null}
         {routeSummary ? <Text style={s.routeSummary}>{routeSummary}</Text> : null}
       </View>
       {searchError || suggestions.length > 0 ? (
