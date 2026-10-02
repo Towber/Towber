@@ -180,7 +180,17 @@ const routesLimit = rateLimit({
   message: { error: 'Too many route requests. Please wait a moment and try again.' },
 });
 
-app.get('/health', (_req, res) => res.json({ ok: true }));
+// Root health-check (fixes "Cannot GET /" on api.towber.co.za)
+app.get('/', (_req, res) => {
+  res.status(200).json({
+    status: 'online',
+    service: 'Towber API',
+    version: '1.0.0',
+  });
+});
+
+// Uptime check
+app.get('/health', (_req, res) => res.status(200).send('OK'));
 
 // 1) Nearby trucks + the currently applicable fare quote for this trip.
 app.get('/api/vehicles/nearby', wrap(async (req, res) => {
