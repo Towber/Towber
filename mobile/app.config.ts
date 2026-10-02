@@ -26,7 +26,7 @@ const config: ExpoConfig = {
     package: 'com.towber.motorist',
     adaptiveIcon: {
       foregroundImage: './assets/adaptive-icon.png',
-      backgroundColor: '#ffffff',
+      backgroundColor: '#2A2D30',
     },
     permissions: ['ACCESS_COARSE_LOCATION', 'ACCESS_FINE_LOCATION'],
     config: {
