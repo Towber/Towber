@@ -2,15 +2,16 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Alert, ActivityIndicator, FlatList, Linking, Modal, Pressable, StyleSheet, Switch, Text, View } from 'react-native';
 import MapView, { Marker, Polyline, PROVIDER_GOOGLE } from 'react-native-maps';
 import BottomSheet, { BottomSheetView } from '@gorhom/bottom-sheet';
-import { BlurView } from 'expo-blur';
+import { StatusBar } from 'expo-status-bar';
 import * as Haptics from 'expo-haptics';
 import * as Location from 'expo-location';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { colors, darkMapStyle, font, radius, zarRange } from '../../../src/theme';
+import { darkMapStyle, font, light as L, radius, zarRange } from '../../../src/theme';
 import { supabase, type BreakdownType, createRequest, fetchActiveRequest, fetchNearby, fetchPlaceSuggestions, fetchRoadRoute, getRequest, isActiveRequestStatus, isTerminalRequestStatus, transitionRequest, type LatLng, type PlaceSuggestion, type RoadRoute, roadKm, subscribeRequestDriverLocation, type RequestStatus, type Truck } from '../../../src/api';
 import { SearchBar } from '../../../src/components/SearchBar';
+import { TopBar, TOPBAR_HEIGHT } from '../../../src/components/TopBar';
 import { TruckCard, TruckCardSkeleton, CARD_WIDTH } from '../../../src/components/TruckCard';
 import { TruckMarker } from '../../../src/components/TruckMarker';
 
@@ -54,11 +55,9 @@ const STATUS_COPY: Record<RequestStatus, string> = {
   expired: 'No driver responded in time. Try again with the nearest trucks.',
 };
 
-const Glass = ({ style }: { style?: any }) => (
-  <View style={[style, { overflow: 'hidden', borderTopLeftRadius: radius.sheet, borderTopRightRadius: radius.sheet }]}>
-    <BlurView intensity={40} tint="dark" style={StyleSheet.absoluteFill} />
-    <View style={[StyleSheet.absoluteFill, { backgroundColor: 'rgba(15,23,42,0.74)' }]} />
-  </View>
+// White Bolt-style bottom sheet.
+const Sheet = ({ style }: { style?: any }) => (
+  <View style={[style, { backgroundColor: L.surface, borderTopLeftRadius: radius.sheet, borderTopRightRadius: radius.sheet, elevation: 16, shadowColor: '#000000', shadowOpacity: 0.16, shadowRadius: 14, shadowOffset: { width: 0, height: -4 } }]} />
 );
 
 export default function HomeScreen() {
@@ -252,7 +251,7 @@ export default function HomeScreen() {
       map.current?.animateToRegion({ latitude: me.lat, longitude: me.lng, latitudeDelta: 0.06, longitudeDelta: 0.06 }, 600);
     } else {
       map.current?.fitToCoordinates(pts.map((p) => ({ latitude: p.lat, longitude: p.lng })), {
-        edgePadding: { top: 220, bottom: 380, left: 60, right: 60 }, animated: true,
+        edgePadding: { top: 280, bottom: 380, left: 60, right: 60 }, animated: true,
       });
     }
   }, [me, dest]);
@@ -375,6 +374,7 @@ export default function HomeScreen() {
 
   const needsDest = !dest;
   const quoteRefreshing = quoteDistanceKm !== tripKm;
+  const ctaDisabled = !selected || needsDest || requesting;
   const trackingCopy: Record<Exclude<TrackingState, 'idle'>, string> = {
     connecting: 'Connecting to private driver tracking…',
     connected: 'Private tracking connected · waiting for a GPS update',
@@ -388,6 +388,7 @@ export default function HomeScreen() {
 
   return (
     <View style={s.root}>
+      <StatusBar style="light" />
       <MapView
         ref={map}
         style={StyleSheet.absoluteFill}
@@ -402,10 +403,10 @@ export default function HomeScreen() {
         {route && route.coordinates.length > 1 && (
           <Polyline
             coordinates={route.coordinates.map((point) => ({ latitude: point.lat, longitude: point.lng }))}
-            strokeColor={colors.route} strokeWidth={5}
+            strokeColor={L.route} strokeWidth={5}
           />
         )}
-        {dest && <Marker coordinate={{ latitude: dest.lat, longitude: dest.lng }} pinColor={colors.route} />}
+        {dest && <Marker coordinate={{ latitude: dest.lat, longitude: dest.lng }} pinColor={L.route} />}
         {trucks.map((t) => (
           <TruckMarker key={t.vehicleId} truck={t} selected={t.vehicleId === selectedId} onPress={() => pick(t)} />
         ))}
@@ -440,63 +441,49 @@ export default function HomeScreen() {
         onSelect={selectPlace}
       />
 
-      <Pressable
-        onPress={() => setDrawerVisible(true)}
-        accessibilityRole="button"
-        accessibilityLabel="Open menu"
-        style={[s.menuButton, { top: top + 124 }]}
-      >
-        <Ionicons name="menu" size={25} color={colors.surface} />
-      </Pressable>
+      <TopBar onMenu={() => setDrawerVisible(true)} onSos={callEmergencyServices} />
 
-      <Modal visible={drawerVisible} transparent animationType="fade" statusBarTranslucent onRequestClose={() => setDrawerVisible(false)}>
-        <View style={s.drawerOverlay}>
-          <Pressable accessibilityLabel="Close menu" style={StyleSheet.absoluteFill} onPress={() => setDrawerVisible(false)} />
-          <View style={[s.drawer, { paddingTop: top + 18, paddingBottom: bottom + 18 }]}>
-            <View style={s.drawerHeader}>
-              <View>
-                <Text style={s.drawerEyebrow}>TOWBER</Text>
-                <Text style={s.drawerTitle}>Menu</Text>
-              </View>
-              <Pressable accessibilityRole="button" accessibilityLabel="Close menu" onPress={() => setDrawerVisible(false)} style={s.closeButton}>
-                <Ionicons name="close" size={22} color={colors.text} />
-              </Pressable>
-            </View>
+      <Modal visible={drawerVisible} animationType="fade" statusBarTranslucent onRequestClose={() => setDrawerVisible(false)}>
+        <View style={s.menuRoot}>
+          <StatusBar style="light" />
+          <View style={[s.menuBar, { paddingTop: top, height: top + TOPBAR_HEIGHT }]}>
+            <Text style={s.menuBrand}>Towber</Text>
+            <Pressable accessibilityRole="button" accessibilityLabel="Close menu" onPress={() => setDrawerVisible(false)} hitSlop={10} style={s.menuClose}>
+              <Ionicons name="close" size={30} color={L.onHeader} />
+            </Pressable>
+          </View>
 
-            <Pressable accessibilityRole="button" accessibilityLabel="Call emergency services, 112" onPress={callEmergencyServices} style={s.emergencyAction}>
-              <View style={s.actionIconRed}><Ionicons name="call" size={19} color="#FFFFFF" /></View>
-              <View style={s.actionCopy}>
-                <Text style={s.emergencyTitle}>Emergency SOS</Text>
-                <Text style={s.emergencySubtext}>Call emergency services · 112</Text>
+          <View style={s.menuBody}>
+            <Pressable accessibilityRole="button" accessibilityLabel="Call emergency services, 112" onPress={callEmergencyServices} style={s.menuRow}>
+              <View style={{ flex: 1 }}>
+                <Text style={[s.menuTitle, { color: L.danger }]}>Emergency SOS</Text>
+                <Text style={s.menuSub}>Call emergency services · 112</Text>
               </View>
-              <Ionicons name="chevron-forward" size={18} color="#FFFFFF" />
+              <Ionicons name="call" size={22} color={L.danger} />
             </Pressable>
 
-            <View style={s.appearanceAction}>
-              <View style={s.actionIcon}><Ionicons name={darkMapEnabled ? 'moon' : 'sunny'} size={19} color={colors.go} /></View>
-              <View style={s.actionCopy}>
-                <Text style={s.actionTitle}>Map appearance</Text>
-                <Text style={s.actionSubtext}>{darkMapEnabled ? 'Dark map' : 'Light map'}</Text>
+            <View style={s.menuRow}>
+              <View style={{ flex: 1 }}>
+                <Text style={s.menuTitle}>Map appearance</Text>
+                <Text style={s.menuSub}>{darkMapEnabled ? 'Dark map' : 'Light map'}</Text>
               </View>
               <Switch
                 accessibilityLabel="Toggle dark map"
                 value={darkMapEnabled}
                 onValueChange={setDarkMapEnabled}
-                trackColor={{ false: '#475569', true: colors.go }}
+                trackColor={{ false: '#D1D5DB', true: L.go }}
                 thumbColor="#FFFFFF"
               />
             </View>
-
-            <View style={s.drawerSpacer} />
-            <Pressable accessibilityRole="button" onPress={() => { void signOutFromDrawer(); }} style={s.signOutAction}>
-              <Ionicons name="log-out-outline" size={20} color={colors.text} />
-              <Text style={s.signOutLabel}>Log out / Sign out</Text>
-            </Pressable>
           </View>
+
+          <Pressable accessibilityRole="button" onPress={() => { void signOutFromDrawer(); }} style={[s.menuLogout, { marginBottom: bottom + 20 }]}>
+            <Text style={s.menuLogoutText}>Log out</Text>
+          </Pressable>
         </View>
       </Modal>
 
-      <BottomSheet snapPoints={[310, '66%']} index={0} backgroundComponent={Glass} handleIndicatorStyle={{ backgroundColor: colors.textMuted, width: 40 }}>
+      <BottomSheet snapPoints={[310, '66%']} index={0} backgroundComponent={Sheet} handleIndicatorStyle={{ backgroundColor: '#D1D5DB', width: 40 }}>
         <BottomSheetView style={s.sheet}>
           <View style={s.head}>
             <Text style={s.title}>{activeRequestId ? 'Your tow request' : 'Nearby tow trucks'}</Text>
@@ -518,8 +505,8 @@ export default function HomeScreen() {
                     disabled={!!activeRequestId}
                     style={[s.serviceChoice, selectedService && s.serviceChoiceSelected, !!activeRequestId && s.serviceChoiceOff]}
                   >
-                    <Ionicons name={service.icon} size={17} color={selectedService ? colors.go : colors.textMuted} />
-                    <Text style={[s.serviceName, selectedService && { color: colors.text }]} numberOfLines={1}>{service.label}</Text>
+                    <Ionicons name={service.icon} size={17} color={selectedService ? L.go : L.textMuted} />
+                    <Text style={[s.serviceName, selectedService && { color: L.text }]} numberOfLines={1}>{service.label}</Text>
                   </Pressable>
                 );
               })}
@@ -579,7 +566,7 @@ export default function HomeScreen() {
                   style={[s.cancelButton, cancelling && s.cancelButtonOff]}
                 >
                   {cancelling
-                    ? <ActivityIndicator size="small" color="#F87171" />
+                    ? <ActivityIndicator size="small" color={L.danger} />
                     : <Text style={s.cancelText}>Cancel request</Text>}
                 </Pressable>
               ) : (
@@ -593,9 +580,9 @@ export default function HomeScreen() {
               onPress={request}
               disabled={!selected || needsDest || quoteRefreshing || requesting}
               accessibilityRole="button"
-              style={[s.cta, (!selected || needsDest || requesting) && s.ctaOff, { marginBottom: bottom + 8 }]}
+              style={[s.cta, ctaDisabled && s.ctaOff, { marginBottom: bottom + 8 }]}
             >
-              <Text style={s.ctaText}>
+              <Text style={[s.ctaText, ctaDisabled && s.ctaTextOff]}>
                 {needsDest ? 'Enter a destination for your price'
                   : !selected ? 'Choose a truck'
                   : quoteRefreshing ? 'Updating route-based ZAR estimate…'
@@ -611,54 +598,47 @@ export default function HomeScreen() {
 }
 
 const s = StyleSheet.create({
-  root: { flex: 1, backgroundColor: colors.bg },
+  root: { flex: 1, backgroundColor: L.bg },
   sheet: { gap: 14, paddingBottom: 8 },
   head: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'baseline', paddingHorizontal: 20 },
   headActions: { flexDirection: 'row', alignItems: 'center', gap: 12 },
-  title: { color: colors.text, fontFamily: font.bold, fontSize: 18 },
-  count: { color: colors.textMuted, fontFamily: font.medium, fontSize: 13 },
+  title: { color: L.text, fontFamily: font.bold, fontSize: 18 },
+  count: { color: L.textMuted, fontFamily: font.medium, fontSize: 13 },
   serviceSection: { gap: 8 },
-  servicePrompt: { color: colors.textMuted, fontFamily: font.medium, fontSize: 12, paddingHorizontal: 20 },
+  servicePrompt: { color: L.textMuted, fontFamily: font.medium, fontSize: 12, paddingHorizontal: 20 },
   serviceRow: { flexDirection: 'row', gap: 8, paddingHorizontal: 16 },
-  serviceChoice: { flex: 1, minHeight: 46, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, borderRadius: 14, borderWidth: 1, borderColor: colors.border, backgroundColor: 'rgba(30,41,59,0.6)', paddingHorizontal: 6 },
-  serviceChoiceSelected: { borderColor: colors.go, backgroundColor: 'rgba(0,230,118,0.10)' },
+  serviceChoice: { flex: 1, minHeight: 46, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, borderRadius: 14, borderWidth: 1.5, borderColor: 'transparent', backgroundColor: L.surfaceRaised, paddingHorizontal: 6 },
+  serviceChoiceSelected: { borderColor: L.go, backgroundColor: L.goSoft },
   serviceChoiceOff: { opacity: 0.5 },
-  statusPanel: { marginHorizontal: 16, gap: 8, padding: 16, borderRadius: 16, borderWidth: 1, borderColor: colors.border, backgroundColor: 'rgba(30,41,59,0.55)' },
-  statusTitle: { color: colors.text, fontFamily: font.bold, fontSize: 16 },
-  statusSubtitle: { color: colors.textMuted, fontFamily: font.medium, fontSize: 13, lineHeight: 18 },
-  statusCompany: { color: colors.route, fontFamily: font.semibold, fontSize: 12 },
+  statusPanel: { marginHorizontal: 16, gap: 8, padding: 16, borderRadius: 16, backgroundColor: L.surfaceRaised },
+  statusTitle: { color: L.text, fontFamily: font.bold, fontSize: 16 },
+  statusSubtitle: { color: L.textMuted, fontFamily: font.medium, fontSize: 13, lineHeight: 18 },
+  statusCompany: { color: L.route, fontFamily: font.semibold, fontSize: 12 },
   timeline: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 2 },
-  chip: { paddingHorizontal: 10, paddingVertical: 6, borderRadius: 999, borderWidth: 1, borderColor: colors.border, backgroundColor: 'rgba(15,23,42,0.6)' },
-  chipOn: { borderColor: colors.go, backgroundColor: 'rgba(0,230,118,0.12)' },
-  chipText: { color: colors.textMuted, fontFamily: font.semibold, fontSize: 11 },
-  chipTextOn: { color: colors.go },
-  statusTimer: { color: colors.warn, fontFamily: font.medium, fontSize: 12 },
-  cancelButton: { height: 46, borderRadius: 14, borderWidth: 1, borderColor: 'rgba(220,38,38,0.6)', alignItems: 'center', justifyContent: 'center' },
+  chip: { paddingHorizontal: 10, paddingVertical: 6, borderRadius: 999, borderWidth: 1, borderColor: L.border, backgroundColor: '#FFFFFF' },
+  chipOn: { borderColor: L.go, backgroundColor: L.goSoft },
+  chipText: { color: L.textMuted, fontFamily: font.semibold, fontSize: 11 },
+  chipTextOn: { color: L.go },
+  statusTimer: { color: L.warn, fontFamily: font.medium, fontSize: 12 },
+  cancelButton: { height: 46, borderRadius: 14, borderWidth: 1, borderColor: 'rgba(220,38,38,0.5)', backgroundColor: '#FFFFFF', alignItems: 'center', justifyContent: 'center' },
   cancelButtonOff: { opacity: 0.6 },
-  cancelText: { color: '#F87171', fontFamily: font.semibold, fontSize: 14 },
-  serviceName: { color: colors.textMuted, fontFamily: font.semibold, fontSize: 12 },
-  tracking: { color: colors.route, fontFamily: font.medium, fontSize: 12, paddingHorizontal: 20 },
-  empty: { color: colors.textMuted, fontFamily: font.medium, fontSize: 14, paddingHorizontal: 20, lineHeight: 20 },
-  cta: { marginHorizontal: 16, height: 54, borderRadius: 16, backgroundColor: colors.go, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 12 },
-  ctaOff: { backgroundColor: colors.surfaceRaised },
-  ctaText: { color: colors.bg, fontFamily: font.bold, fontSize: 15 },
-  menuButton: { position: 'absolute', right: 18, width: 48, height: 48, borderRadius: 24, backgroundColor: '#FFFFFF', alignItems: 'center', justifyContent: 'center', elevation: 7, shadowColor: '#000000', shadowOpacity: 0.18, shadowRadius: 10, shadowOffset: { width: 0, height: 4 }, zIndex: 5 },
-  drawerOverlay: { flex: 1, flexDirection: 'row', backgroundColor: 'rgba(2,6,23,0.58)' },
-  drawer: { width: '84%', maxWidth: 360, minHeight: '100%', backgroundColor: colors.surface, borderRightWidth: 1, borderRightColor: colors.border, paddingHorizontal: 22 },
-  drawerHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 30 },
-  drawerEyebrow: { color: colors.go, fontFamily: font.bold, fontSize: 10, letterSpacing: 2.5 },
-  drawerTitle: { color: colors.text, fontFamily: font.bold, fontSize: 25, marginTop: 5 },
-  closeButton: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.surfaceRaised },
-  emergencyAction: { minHeight: 76, flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 14, borderRadius: 18, backgroundColor: '#DC2626', marginBottom: 14 },
-  actionIconRed: { width: 40, height: 40, borderRadius: 14, backgroundColor: 'rgba(255,255,255,0.18)', alignItems: 'center', justifyContent: 'center' },
-  actionCopy: { flex: 1, gap: 4 },
-  emergencyTitle: { color: '#FFFFFF', fontFamily: font.bold, fontSize: 15 },
-  emergencySubtext: { color: 'rgba(255,255,255,0.84)', fontFamily: font.medium, fontSize: 11 },
-  appearanceAction: { minHeight: 76, flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 14, borderRadius: 18, borderWidth: 1, borderColor: colors.border, backgroundColor: 'rgba(30,41,59,0.52)' },
-  actionIcon: { width: 40, height: 40, borderRadius: 14, backgroundColor: 'rgba(0,230,118,0.1)', alignItems: 'center', justifyContent: 'center' },
-  actionTitle: { color: colors.text, fontFamily: font.semibold, fontSize: 14 },
-  actionSubtext: { color: colors.textMuted, fontFamily: font.medium, fontSize: 11 },
-  drawerSpacer: { flex: 1 },
-  signOutAction: { minHeight: 54, flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 14, borderRadius: 16, backgroundColor: colors.surfaceRaised, marginBottom: 12 },
-  signOutLabel: { color: colors.text, fontFamily: font.semibold, fontSize: 14 },
+  cancelText: { color: L.danger, fontFamily: font.semibold, fontSize: 14 },
+  serviceName: { color: L.textMuted, fontFamily: font.semibold, fontSize: 12 },
+  tracking: { color: L.route, fontFamily: font.medium, fontSize: 12, paddingHorizontal: 20 },
+  empty: { color: L.textMuted, fontFamily: font.medium, fontSize: 14, paddingHorizontal: 20, lineHeight: 20 },
+  cta: { marginHorizontal: 16, height: 54, borderRadius: 999, backgroundColor: L.go, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 12 },
+  ctaOff: { backgroundColor: L.disabled },
+  ctaText: { color: L.onGo, fontFamily: font.bold, fontSize: 16 },
+  ctaTextOff: { color: L.disabledText },
+  // Uber-style full-screen menu
+  menuRoot: { flex: 1, backgroundColor: '#FFFFFF' },
+  menuBar: { backgroundColor: L.header, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 20 },
+  menuBrand: { color: L.onHeader, fontFamily: font.bold, fontSize: 28, letterSpacing: -0.8 },
+  menuClose: { width: 32, height: 40, alignItems: 'center', justifyContent: 'center' },
+  menuBody: { flex: 1, paddingHorizontal: 20, paddingTop: 12 },
+  menuRow: { minHeight: 84, flexDirection: 'row', alignItems: 'center', gap: 12, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: L.border },
+  menuTitle: { color: L.text, fontFamily: font.bold, fontSize: 24, letterSpacing: -0.4 },
+  menuSub: { color: L.textMuted, fontFamily: font.medium, fontSize: 14, marginTop: 3 },
+  menuLogout: { marginHorizontal: 20, height: 54, borderRadius: 999, backgroundColor: '#EEEEEE', alignItems: 'center', justifyContent: 'center' },
+  menuLogoutText: { color: L.text, fontFamily: font.bold, fontSize: 16 },
 });
