@@ -12,16 +12,11 @@ import {
   View,
 } from 'react-native';
 import * as Linking from 'expo-linking';
+import { StatusBar } from 'expo-status-bar';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { supabase } from '../../src/api';
-import { font } from '../../src/theme';
-
-const SCREEN_BG = '#0F172A';
-const ACCENT = '#10B981';
-const TEXT = '#F8FAFC';
-const MUTED = '#94A3B8';
-const GLASS_BORDER = 'rgba(148,163,184,0.18)';
+import { font, light as L } from '../../src/theme';
 
 export default function SignInScreen() {
   const [email, setEmail] = useState('');
@@ -74,48 +69,35 @@ export default function SignInScreen() {
 
   return (
     <SafeAreaView style={styles.safe} edges={['top', 'bottom']}>
+      <StatusBar style="dark" />
       <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-        <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+        <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
           <View style={styles.header}>
-            <Image
-              accessible
-              accessibilityLabel="Towber logo"
-              resizeMode="contain"
-              source={require('../../assets/icon.png')}
-              style={styles.logo}
-            />
-            <Text style={styles.brand}>TOWBER</Text>
-            <Text style={styles.title}>Welcome to Towber</Text>
-            <Text style={styles.subtitle}>
-              Drivers: sign in with the email invited by Towber. Clients can get help right away as a guest.
-            </Text>
+            <Image accessible accessibilityLabel="Towber logo" resizeMode="contain" source={require('../../assets/icon.png')} style={styles.logo} />
+            <Text style={styles.brand}>Towber</Text>
+            <Text style={styles.tagline}>Roadside help, when you need it.</Text>
           </View>
 
-          <Pressable
-            accessibilityRole="button"
-            disabled={actionsDisabled}
-            onPress={() => { void continueAsClient(); }}
-            style={({ pressed }) => [styles.guestButton, pressed && styles.guestPressed, actionsDisabled && styles.disabled]}
-          >
-            <View style={styles.guestCopy}>
-              <Text style={styles.guestButtonText}>Continue as a client guest</Text>
-              <Text style={styles.guestButtonSubtext}>No account needed to request help</Text>
-            </View>
-            {startingGuest ? (
-              <ActivityIndicator color={SCREEN_BG} />
-            ) : (
-              <View style={styles.guestArrow}><Text style={styles.guestArrowText}>›</Text></View>
-            )}
-          </Pressable>
-
-          <View style={styles.divider}>
-            <View style={styles.dividerLine} />
-            <Text style={styles.dividerText}>OR SIGN IN WITH EMAIL</Text>
-            <View style={styles.dividerLine} />
+          {/* GUEST PORTAL */}
+          <View style={styles.card}>
+            <View style={styles.tag}><Text style={styles.tagText}>GUEST PORTAL</Text></View>
+            <Text style={styles.cardTitle}>Stuck on the road?</Text>
+            <Text style={styles.cardBody}>Request a tow, jump start, fuel or a tyre change. No account needed.</Text>
+            <Pressable
+              accessibilityRole="button"
+              disabled={actionsDisabled}
+              onPress={() => { void continueAsClient(); }}
+              style={({ pressed }) => [styles.primaryButton, pressed && styles.pressed, actionsDisabled && styles.disabled]}
+            >
+              {startingGuest ? <ActivityIndicator color={L.onGo} /> : <Text style={styles.primaryText}>Get help now</Text>}
+            </Pressable>
           </View>
 
-          <View style={styles.formCard}>
-            <Text style={styles.label}>Email address</Text>
+          {/* DRIVER PORTAL */}
+          <View style={styles.card}>
+            <View style={[styles.tag, styles.tagDark]}><Text style={[styles.tagText, { color: '#FFFFFF' }]}>DRIVER PORTAL</Text></View>
+            <Text style={styles.cardTitle}>Tow operators</Text>
+            <Text style={styles.cardBody}>Sign in with the email Towber invited. We’ll send you a one-time link.</Text>
             <TextInput
               accessibilityLabel="Email address"
               autoCapitalize="none"
@@ -123,8 +105,8 @@ export default function SignInScreen() {
               autoCorrect={false}
               keyboardType="email-address"
               onChangeText={(value) => { setEmail(value); setError(null); setSentTo(null); }}
-              placeholder="you@example.com"
-              placeholderTextColor={MUTED}
+              placeholder="Email address"
+              placeholderTextColor={L.disabledText}
               returnKeyType="send"
               style={styles.input}
               value={email}
@@ -134,15 +116,10 @@ export default function SignInScreen() {
               accessibilityRole="button"
               disabled={actionsDisabled}
               onPress={() => { void sendMagicLink(); }}
-              style={({ pressed }) => [styles.emailButton, pressed && styles.emailPressed, actionsDisabled && styles.disabled]}
+              style={({ pressed }) => [styles.darkButton, pressed && styles.pressed, actionsDisabled && styles.disabled]}
             >
-              {sendingLink ? (
-                <ActivityIndicator color={ACCENT} />
-              ) : (
-                <Text style={styles.emailButtonText}>Email me a sign-in link</Text>
-              )}
+              {sendingLink ? <ActivityIndicator color="#FFFFFF" /> : <Text style={styles.darkText}>Email me a sign-in link</Text>}
             </Pressable>
-            <Text style={styles.helper}>Only an account already invited to Towber can sign in with email.</Text>
           </View>
 
           {sentTo ? (
@@ -170,94 +147,30 @@ export default function SignInScreen() {
 
 const styles = StyleSheet.create({
   flex: { flex: 1 },
-  safe: { flex: 1, backgroundColor: SCREEN_BG },
-  content: { flexGrow: 1, justifyContent: 'center', paddingHorizontal: 24, paddingTop: 28, paddingBottom: 36 },
-  header: { alignItems: 'center', marginBottom: 24 },
-  logo: {
-    width: 116,
-    height: 116,
-    borderRadius: 28,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.08)',
-    backgroundColor: '#2A2D30',
-    shadowColor: '#000000',
-    shadowOpacity: 0.22,
-    shadowRadius: 18,
-    shadowOffset: { width: 0, height: 8 },
-    elevation: 5,
-  },
-  brand: { color: ACCENT, fontFamily: font.bold, fontSize: 11, letterSpacing: 3, marginTop: 14 },
-  title: { color: TEXT, fontFamily: font.bold, fontSize: 28, lineHeight: 35, textAlign: 'center', marginTop: 6 },
-  subtitle: { color: MUTED, fontFamily: font.regular, fontSize: 13, lineHeight: 20, textAlign: 'center', marginTop: 9, maxWidth: 340 },
-  guestButton: {
-    minHeight: 68,
-    borderRadius: 20,
-    backgroundColor: ACCENT,
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    flexDirection: 'row',
-    paddingVertical: 14,
-    paddingHorizontal: 18,
-    shadowColor: ACCENT,
-    shadowOpacity: 0.2,
-    shadowRadius: 16,
-    shadowOffset: { width: 0, height: 7 },
-    elevation: 4,
-  },
-  guestCopy: { flex: 1, gap: 3 },
-  guestButtonText: { color: '#052E24', fontFamily: font.bold, fontSize: 15 },
-  guestButtonSubtext: { color: 'rgba(5,46,36,0.78)', fontFamily: font.medium, fontSize: 12 },
-  guestArrow: { width: 34, height: 34, borderRadius: 17, backgroundColor: 'rgba(5,46,36,0.1)', alignItems: 'center', justifyContent: 'center', marginLeft: 12 },
-  guestArrowText: { color: '#052E24', fontFamily: font.bold, fontSize: 25, lineHeight: 29, marginTop: -2 },
-  guestPressed: { opacity: 0.86, transform: [{ scale: 0.99 }] },
-  divider: { flexDirection: 'row', alignItems: 'center', gap: 12, marginVertical: 20 },
-  dividerLine: { flex: 1, height: 1, backgroundColor: GLASS_BORDER },
-  dividerText: { color: MUTED, fontFamily: font.semibold, fontSize: 10, letterSpacing: 1 },
-  formCard: {
-    gap: 12,
-    padding: 18,
-    borderRadius: 24,
-    borderWidth: 1,
-    borderColor: GLASS_BORDER,
-    backgroundColor: 'rgba(255,255,255,0.045)',
-    shadowColor: '#000000',
-    shadowOpacity: 0.2,
-    shadowRadius: 20,
-    shadowOffset: { width: 0, height: 10 },
-    elevation: 4,
-  },
-  label: { color: TEXT, fontFamily: font.semibold, fontSize: 13 },
-  input: {
-    minHeight: 56,
-    borderWidth: 1,
-    borderColor: 'rgba(148,163,184,0.2)',
-    borderRadius: 16,
-    backgroundColor: 'rgba(15,23,42,0.72)',
-    paddingHorizontal: 16,
-    color: TEXT,
-    fontFamily: font.regular,
-    fontSize: 15,
-  },
-  emailButton: {
-    minHeight: 56,
-    borderRadius: 18,
-    borderWidth: 1,
-    borderColor: 'rgba(16,185,129,0.48)',
-    backgroundColor: 'rgba(16,185,129,0.1)',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 18,
-    marginTop: 2,
-  },
-  emailButtonText: { color: ACCENT, fontFamily: font.bold, fontSize: 14 },
-  emailPressed: { backgroundColor: 'rgba(16,185,129,0.17)' },
-  disabled: { opacity: 0.58 },
-  helper: { color: MUTED, fontFamily: font.regular, fontSize: 11, lineHeight: 17 },
-  notice: { padding: 14, marginTop: 16, borderRadius: 18, borderColor: 'rgba(16,185,129,0.32)', borderWidth: 1, backgroundColor: 'rgba(16,185,129,0.08)', gap: 4 },
-  noticeTitle: { color: ACCENT, fontFamily: font.semibold, fontSize: 14 },
-  noticeText: { color: TEXT, fontFamily: font.regular, fontSize: 13, lineHeight: 19 },
-  errorBox: { padding: 14, marginTop: 16, borderRadius: 18, borderColor: 'rgba(244,63,94,0.4)', borderWidth: 1, backgroundColor: 'rgba(244,63,94,0.08)', gap: 6 },
-  errorText: { color: TEXT, fontFamily: font.medium, fontSize: 13, lineHeight: 19 },
-  errorHint: { color: '#FBBF24', fontFamily: font.regular, fontSize: 12, lineHeight: 18 },
-  footer: { color: MUTED, fontFamily: font.regular, fontSize: 11, lineHeight: 16, textAlign: 'center', marginTop: 18 },
+  safe: { flex: 1, backgroundColor: L.bg },
+  content: { flexGrow: 1, justifyContent: 'center', paddingHorizontal: 20, paddingTop: 20, paddingBottom: 32, gap: 16 },
+  header: { alignItems: 'center', marginBottom: 8 },
+  logo: { width: 84, height: 84, borderRadius: 22 },
+  brand: { color: L.text, fontFamily: font.bold, fontSize: 34, letterSpacing: -1, marginTop: 14 },
+  tagline: { color: L.textMuted, fontFamily: font.medium, fontSize: 15, marginTop: 4 },
+  card: { padding: 20, borderRadius: 22, backgroundColor: L.surfaceRaised, gap: 12 },
+  tag: { alignSelf: 'flex-start', paddingHorizontal: 10, paddingVertical: 5, borderRadius: 999, backgroundColor: L.goSoft },
+  tagDark: { backgroundColor: '#111827' },
+  tagText: { color: L.go, fontFamily: font.bold, fontSize: 11, letterSpacing: 1.2 },
+  cardTitle: { color: L.text, fontFamily: font.bold, fontSize: 24, letterSpacing: -0.5 },
+  cardBody: { color: L.textMuted, fontFamily: font.medium, fontSize: 14, lineHeight: 20 },
+  primaryButton: { height: 54, borderRadius: 999, backgroundColor: L.go, alignItems: 'center', justifyContent: 'center', marginTop: 4 },
+  primaryText: { color: L.onGo, fontFamily: font.bold, fontSize: 16 },
+  input: { height: 52, borderRadius: 14, backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: L.border, paddingHorizontal: 16, color: L.text, fontFamily: font.medium, fontSize: 16 },
+  darkButton: { height: 54, borderRadius: 999, backgroundColor: '#111827', alignItems: 'center', justifyContent: 'center' },
+  darkText: { color: '#FFFFFF', fontFamily: font.bold, fontSize: 16 },
+  pressed: { opacity: 0.85 },
+  disabled: { opacity: 0.55 },
+  notice: { padding: 14, borderRadius: 16, backgroundColor: L.goSoft, gap: 4 },
+  noticeTitle: { color: L.go, fontFamily: font.bold, fontSize: 14 },
+  noticeText: { color: L.text, fontFamily: font.regular, fontSize: 13, lineHeight: 19 },
+  errorBox: { padding: 14, borderRadius: 16, backgroundColor: 'rgba(220,38,38,0.08)', gap: 6 },
+  errorText: { color: L.danger, fontFamily: font.medium, fontSize: 13, lineHeight: 19 },
+  errorHint: { color: L.warn, fontFamily: font.regular, fontSize: 12, lineHeight: 18 },
+  footer: { color: L.textMuted, fontFamily: font.regular, fontSize: 12, lineHeight: 18, textAlign: 'center', paddingHorizontal: 12 },
 });
