@@ -40,6 +40,12 @@ const requestBody = z.object({
   tripDistanceKm: z.number().min(0.5).max(1500),
   breakdownType: z.enum(['flatbed', 'jumpstart', 'lockout']).default('flatbed'),
 });
+const statusActionBody = z.object({
+  action: z.enum(['en_route', 'arrived', 'completed']),
+});
+
+const ACTIVE_STATUSES = ['pending', 'accepted', 'en_route', 'arrived'];
+const ACTIVE_REQUEST_ERROR = 'You already have an active tow request. Cancel it before requesting another tow.';
 const autocompleteBody = z.object({
   input: z.string().trim().min(2).max(120),
   origin: point.optional(),
@@ -96,6 +102,32 @@ function normalizeVehicle(r) {
     priceMin: numeric(r.price_min ?? r.estimated_price_min ?? r.min_price),
     priceMax: numeric(r.price_max ?? r.estimated_price_max ?? r.estimated_price),
   };
+}
+
+// Maps transition_tow_request failures to HTTP statuses. The RPC raises
+// machine-readable messages (not_found / forbidden / conflict:<reason>).
+function mapTransitionError(error) {
+  const message = String(error?.message ?? '');
+  if (error?.code === 'P0002' || message.includes('not_found')) {
+    return { status: 404, error: 'Not found' };
+  }
+  if (error?.code === '42501' || message.includes('forbidden')) {
+    return { status: 403, error: 'You are not allowed to act on this request.' };
+  }
+  if (error?.code === '22023' || message.includes('invalid_transition_payload')) {
+    return { status: 400, error: 'Invalid input' };
+  }
+  if (message.includes('conflict:')) {
+    let reason = 'That action is not available right now.';
+    if (message.includes('not_pending')) reason = 'This request is no longer waiting for a driver.';
+    else if (message.includes('reassigned')) reason = 'This offer moved to another truck.';
+    else if (message.includes('not_accepted')) reason = 'The driver has not accepted this request yet.';
+    else if (message.includes('not_en_route')) reason = 'The driver has not started driving yet.';
+    else if (message.includes('not_arrived')) reason = 'The driver has not arrived yet.';
+    else if (message.includes('closed')) reason = 'This request is already closed.';
+    return { status: 409, error: reason };
+  }
+  return null;
 }
 
 async function findNearby({ lat, lng, distance_km, radius_m }) {
@@ -281,6 +313,20 @@ app.patch('/api/vehicles/:id/location', requireUser, wrap(async (req, res) => {
 app.post('/api/requests', requireUser, wrap(async (req, res) => {
   const b = parse(requestBody, req.body, res); if (!b) return;
 
+  // Resolve any stale pending offer first, then enforce one active request
+  // per motorist (the partial unique index is the race-proof backstop).
+  const sweep = await supabase.rpc('expire_stale_tow_requests_for_user', { p_user_id: req.user.id });
+  if (sweep.error) throw sweep.error;
+  const { data: activeRow, error: activeError } = await supabase
+    .from('tow_requests')
+    .select('id')
+    .eq('user_id', req.user.id)
+    .in('status', ACTIVE_STATUSES)
+    .limit(1)
+    .maybeSingle();
+  if (activeError) throw activeError;
+  if (activeRow) return res.status(409).json({ error: ACTIVE_REQUEST_ERROR });
+
   const candidates = await findNearby({
     lat: b.pickup.lat, lng: b.pickup.lng, distance_km: b.tripDistanceKm, radius_m: 50000,
   });
@@ -320,26 +366,84 @@ app.post('/api/requests', requireUser, wrap(async (req, res) => {
       fare_quoted_at: new Date().toISOString(),
       status: 'pending',
     })
-    .select('id, status, breakdown_type, estimated_price_min, estimated_price_max, fare_currency, fare_service_class_code, fare_quoted_at, created_at')
+    .select('id, status, expires_at, assigned_vehicle_id, breakdown_type, estimated_price_min, estimated_price_max, fare_currency, fare_service_class_code, fare_quoted_at, created_at')
     .single();
-  if (error) throw error;
+  if (error) {
+    if (error.code === '23505') return res.status(409).json({ error: ACTIVE_REQUEST_ERROR });
+    throw error;
+  }
+
+  // Record the first dispatch offer so a later decline/expiry skips this truck.
+  const { error: offerError } = await supabase
+    .from('tow_request_offers')
+    .insert({ request_id: data.id, vehicle_id: chosen.vehicleId });
+  if (offerError && offerError.code !== '23505') throw offerError;
 
   res.status(201).json({ request: data, truck: { ...chosen, priceMin: total, priceMax: total } });
 }));
 
-// 6) Poll/read one of your own requests.
+// 6) The motorist's current request, if any. Sweeps stale offers first so a
+// dead pending request never blocks a new one.
+app.get('/api/requests/active', requireUser, wrap(async (req, res) => {
+  const sweep = await supabase.rpc('expire_stale_tow_requests_for_user', { p_user_id: req.user.id });
+  if (sweep.error) throw sweep.error;
+  const { data, error } = await supabase
+    .from('tow_requests')
+    .select('*, towing_companies(company_name)')
+    .eq('user_id', req.user.id)
+    .in('status', ACTIVE_STATUSES)
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (error) throw error;
+  res.json({ request: data });
+}));
+
+// 7) Poll/read one of your own requests. A stale pending offer is resolved
+// (re-dispatched or expired) as part of the read.
 app.get('/api/requests/:id', requireUser, wrap(async (req, res) => {
   const id = z.string().uuid().safeParse(req.params.id);
   if (!id.success) return res.status(400).json({ error: 'Invalid request id' });
+  const stale = await supabase.rpc('expire_tow_request_if_stale', { p_request_id: id.data });
+  if (stale.error) throw stale.error;
   const { data, error } = await supabase
     .from('tow_requests')
-    .select('*')
+    .select('*, towing_companies(company_name)')
     .eq('id', id.data)
     .eq('user_id', req.user.id)
     .maybeSingle();
   if (error) throw error;
   if (!data) return res.status(404).json({ error: 'Not found' });
   res.json({ request: data });
+}));
+
+// 8) Dispatch state transitions. All of them delegate to the
+// transition_tow_request state machine; the RPC enforces who may act and from
+// which status, and returns 409s for stale/raced actions.
+async function handleTransition(req, res, action) {
+  const id = z.string().uuid().safeParse(req.params.id);
+  if (!id.success) return res.status(400).json({ error: 'Invalid request id' });
+  const { data, error } = await supabase.rpc('transition_tow_request', {
+    p_request_id: id.data,
+    p_actor_user_id: req.user.id,
+    p_action: action,
+  });
+  if (error) {
+    const mapped = mapTransitionError(error);
+    if (mapped) return res.status(mapped.status).json({ error: mapped.error });
+    throw error;
+  }
+  const request = Array.isArray(data) ? data[0] : data;
+  if (!request) return res.status(404).json({ error: 'Not found' });
+  res.json({ request });
+}
+
+app.post('/api/requests/:id/accept', requireUser, wrap((req, res) => handleTransition(req, res, 'accept')));
+app.post('/api/requests/:id/decline', requireUser, wrap((req, res) => handleTransition(req, res, 'decline')));
+app.post('/api/requests/:id/cancel', requireUser, wrap((req, res) => handleTransition(req, res, 'cancel')));
+app.post('/api/requests/:id/status', requireUser, wrap(async (req, res) => {
+  const b = parse(statusActionBody, req.body, res); if (!b) return;
+  await handleTransition(req, res, b.action);
 }));
 
 // eslint-disable-next-line no-unused-vars

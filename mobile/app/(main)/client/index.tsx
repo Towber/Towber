@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Alert, FlatList, Linking, Modal, Pressable, StyleSheet, Switch, Text, View } from 'react-native';
+import { Alert, ActivityIndicator, FlatList, Linking, Modal, Pressable, StyleSheet, Switch, Text, View } from 'react-native';
 import MapView, { Marker, Polyline, PROVIDER_GOOGLE } from 'react-native-maps';
 import BottomSheet, { BottomSheetView } from '@gorhom/bottom-sheet';
 import { BlurView } from 'expo-blur';
@@ -9,7 +9,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { colors, darkMapStyle, font, radius, zarRange } from '../../../src/theme';
-import { supabase, type BreakdownType, createRequest, fetchNearby, fetchPlaceSuggestions, fetchRoadRoute, type LatLng, type PlaceSuggestion, type RoadRoute, roadKm, subscribeRequestDriverLocation, type Truck } from '../../../src/api';
+import { supabase, type BreakdownType, createRequest, fetchActiveRequest, fetchNearby, fetchPlaceSuggestions, fetchRoadRoute, getRequest, isActiveRequestStatus, isTerminalRequestStatus, transitionRequest, type LatLng, type PlaceSuggestion, type RoadRoute, roadKm, subscribeRequestDriverLocation, type RequestStatus, type Truck } from '../../../src/api';
 import { SearchBar } from '../../../src/components/SearchBar';
 import { TruckCard, TruckCardSkeleton, CARD_WIDTH } from '../../../src/components/TruckCard';
 import { TruckMarker } from '../../../src/components/TruckMarker';
@@ -25,6 +25,34 @@ const BREAKDOWN_SERVICES: { id: BreakdownType; label: string; icon: React.Compon
 ];
 
 type TrackingState = 'idle' | 'connecting' | 'connected' | 'error';
+
+const TIMELINE: { key: RequestStatus; label: string }[] = [
+  { key: 'pending', label: 'Sent' },
+  { key: 'accepted', label: 'Accepted' },
+  { key: 'en_route', label: 'En route' },
+  { key: 'arrived', label: 'Arrived' },
+  { key: 'completed', label: 'Done' },
+];
+const STATUS_TITLE: Record<RequestStatus, string> = {
+  pending: 'Finding your driver',
+  accepted: 'Driver found',
+  en_route: 'Driver en route',
+  arrived: 'Driver has arrived',
+  completed: 'Tow complete',
+  cancelled: 'Request cancelled',
+  declined: 'No truck available',
+  expired: 'No response from drivers',
+};
+const STATUS_COPY: Record<RequestStatus, string> = {
+  pending: 'Nearby trucks have been notified of your breakdown.',
+  accepted: 'Your driver is preparing to leave.',
+  en_route: 'Live GPS tracking is on — watch the truck approach.',
+  arrived: 'Your driver is at the pickup point.',
+  completed: 'Thanks for riding with Towber. Safe travels.',
+  cancelled: 'You cancelled this request. You can request a new tow anytime.',
+  declined: 'Every nearby truck was unavailable. Try again or pick another truck.',
+  expired: 'No driver responded in time. Try again with the nearest trucks.',
+};
 
 const Glass = ({ style }: { style?: any }) => (
   <View style={[style, { overflow: 'hidden', borderTopLeftRadius: radius.sheet, borderTopRightRadius: radius.sheet }]}>
@@ -55,6 +83,11 @@ export default function HomeScreen() {
   const placesSessionToken = useRef(newPlacesSessionToken());
   const [requesting, setRequesting] = useState(false);
   const [activeRequestId, setActiveRequestId] = useState<string | null>(null);
+  const [requestStatus, setRequestStatus] = useState<RequestStatus | null>(null);
+  const [requestExpiresAt, setRequestExpiresAt] = useState<string | null>(null);
+  const [requestCompany, setRequestCompany] = useState<string | null>(null);
+  const [cancelling, setCancelling] = useState(false);
+  const [clockMs, setClockMs] = useState(() => Date.now());
   const [trackingState, setTrackingState] = useState<TrackingState>('idle');
   const [breakdownType, setBreakdownType] = useState<BreakdownType>('flatbed');
   const [drawerVisible, setDrawerVisible] = useState(false);
@@ -162,6 +195,55 @@ export default function HomeScreen() {
     };
   }, [activeRequestId]);
 
+  // Resume an already-open request after an app restart, so the status panel
+  // survives navigation and redeploys.
+  useEffect(() => {
+    let mounted = true;
+    fetchActiveRequest()
+      .then((row) => {
+        if (!mounted || !row) return;
+        setActiveRequestId(row.id);
+        setRequestStatus(row.status);
+        setRequestExpiresAt(row.expires_at ?? null);
+        setRequestCompany(row.towing_companies?.company_name ?? null);
+      })
+      .catch(() => { /* No active request, or offline — start fresh. */ });
+    return () => { mounted = false; };
+  }, []);
+
+  // Poll the request's real status; stop once it reaches a terminal state.
+  useEffect(() => {
+    if (!activeRequestId) {
+      setRequestStatus(null);
+      setRequestExpiresAt(null);
+      return;
+    }
+    const terminal = !!requestStatus && isTerminalRequestStatus(requestStatus);
+    let stopped = false;
+    const refresh = () => {
+      getRequest(activeRequestId)
+        .then((row) => {
+          if (stopped) return;
+          setRequestStatus(row.status);
+          setRequestExpiresAt(row.expires_at ?? null);
+          if (row.towing_companies?.company_name) setRequestCompany(row.towing_companies.company_name);
+        })
+        .catch(() => { /* Keep the last known status until the next tick. */ });
+    };
+    refresh();
+    if (terminal) return () => { stopped = true; };
+    const timer = setInterval(refresh, 3000);
+    return () => { stopped = true; clearInterval(timer); };
+  }, [activeRequestId, requestStatus]);
+
+  // Offer countdown while the request is still pending.
+  useEffect(() => {
+    if (!activeRequestId || requestStatus !== 'pending') return;
+    setClockMs(Date.now());
+    const timer = setInterval(() => setClockMs(Date.now()), 1000);
+    return () => clearInterval(timer);
+  }, [activeRequestId, requestStatus]);
+
   // Frame the map when we know where the user is / where they're going.
   useEffect(() => {
     if (!me) return;
@@ -236,17 +318,49 @@ export default function HomeScreen() {
     try {
       const { request: created } = await createRequest({ pickup: me, dropoff: dest, vehicleId: selected.vehicleId, tripDistanceKm: tripKm, breakdownType });
       setActiveRequestId(created.id);
+      setRequestStatus(created.status);
+      setRequestExpiresAt(created.expires_at ?? null);
+      setRequestCompany(selected.companyName);
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      Alert.alert(
-        'Request sent',
-        `${selected.companyName} has been notified for ${BREAKDOWN_SERVICES.find((service) => service.id === breakdownType)?.label}. Reference ${created.id.slice(0, 8)}. Driver GPS updates will appear here when the driver comes online.`,
-      );
     } catch (e: any) {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
       Alert.alert('Request failed', e.message);
     } finally {
       setRequesting(false);
     }
+  };
+
+  // Cancelling is confirmed, then goes through the same state machine the
+  // drivers use, so the server owns the race between cancel and accept.
+  const cancelActiveRequest = () => {
+    if (!activeRequestId || cancelling) return;
+    Alert.alert('Cancel this tow request?', 'The assigned truck is released and you can request a new tow.', [
+      { text: 'Keep request', style: 'cancel' },
+      {
+        text: 'Cancel request',
+        style: 'destructive',
+        onPress: () => {
+          setCancelling(true);
+          transitionRequest(activeRequestId, 'cancel')
+            .then((row) => {
+              setRequestStatus(row.status);
+              setRequestExpiresAt(row.expires_at ?? null);
+              Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+            })
+            .catch((error: unknown) => {
+              Alert.alert('Could not cancel', error instanceof Error ? error.message : 'Try again.');
+            })
+            .finally(() => setCancelling(false));
+        },
+      },
+    ]);
+  };
+
+  const resetRequest = () => {
+    setActiveRequestId(null);
+    setRequestStatus(null);
+    setRequestExpiresAt(null);
+    setRequestCompany(null);
   };
 
   const callEmergencyServices = () => {
@@ -266,6 +380,11 @@ export default function HomeScreen() {
     connected: 'Private tracking connected · waiting for a GPS update',
     error: 'Tracking connection interrupted · reconnecting',
   };
+  const activeStatus = !!requestStatus && isActiveRequestStatus(requestStatus);
+  const timelineIndex = requestStatus ? TIMELINE.findIndex((step) => step.key === requestStatus) : -1;
+  const pendingSecondsLeft = requestStatus === 'pending' && requestExpiresAt
+    ? Math.max(0, Math.ceil((new Date(requestExpiresAt).getTime() - clockMs) / 1000))
+    : 0;
 
   return (
     <View style={s.root}>
@@ -396,7 +515,8 @@ export default function HomeScreen() {
                     accessibilityRole="button"
                     accessibilityState={{ selected: selectedService }}
                     onPress={() => setBreakdownType(service.id)}
-                    style={[s.serviceChoice, selectedService && s.serviceChoiceSelected]}
+                    disabled={!!activeRequestId}
+                    style={[s.serviceChoice, selectedService && s.serviceChoiceSelected, !!activeRequestId && s.serviceChoiceOff]}
                   >
                     <Ionicons name={service.icon} size={17} color={selectedService ? colors.go : colors.textMuted} />
                     <Text style={[s.serviceName, selectedService && { color: colors.text }]} numberOfLines={1}>{service.label}</Text>
@@ -405,7 +525,9 @@ export default function HomeScreen() {
               })}
             </View>
           </View>
-          {activeRequestId && <Text style={s.tracking}>{trackingCopy[trackingState === 'idle' ? 'connecting' : trackingState]}</Text>}
+          {activeRequestId && activeStatus && requestStatus !== 'pending' && (
+            <Text style={s.tracking}>{trackingCopy[trackingState === 'idle' ? 'connecting' : trackingState]}</Text>
+          )}
 
           {loading ? (
             <View style={{ flexDirection: 'row', paddingHorizontal: 16 }}><TruckCardSkeleton /><TruckCardSkeleton /></View>
@@ -421,21 +543,67 @@ export default function HomeScreen() {
             />
           )}
 
-          <Pressable
-            onPress={request}
-            disabled={!selected || needsDest || quoteRefreshing || requesting || !!activeRequestId}
-            accessibilityRole="button"
-            style={[s.cta, (!selected || needsDest || requesting || !!activeRequestId) && s.ctaOff, { marginBottom: bottom + 8 }]}
-          >
-            <Text style={s.ctaText}>
-              {activeRequestId ? 'Tow requested · tracking this driver'
-                : needsDest ? 'Enter a destination for your price'
-                : !selected ? 'Choose a truck'
-                : quoteRefreshing ? 'Updating route-based ZAR estimate…'
-                : requesting ? 'Sending request…'
-                : `Request Tow  ·  ${zarRange(selected.priceMin, selected.priceMax)}`}
-            </Text>
-          </Pressable>
+          {activeRequestId ? (
+            <View style={[s.statusPanel, { marginBottom: bottom + 8 }]}>
+              <Text style={s.statusTitle}>{requestStatus ? STATUS_TITLE[requestStatus] : 'Your tow request'}</Text>
+              <Text style={s.statusSubtitle}>
+                {requestStatus ? STATUS_COPY[requestStatus] : 'Checking the latest status…'}
+              </Text>
+              {requestCompany && activeStatus && requestStatus !== 'pending' && (
+                <Text style={s.statusCompany}>{requestCompany}</Text>
+              )}
+              {timelineIndex >= 0 && (
+                <View style={s.timeline}>
+                  {TIMELINE.map((step, index) => {
+                    const reached = index <= timelineIndex;
+                    return (
+                      <View key={step.key} style={[s.chip, reached && s.chipOn]}>
+                        <Text style={[s.chipText, reached && s.chipTextOn]}>{step.label}</Text>
+                      </View>
+                    );
+                  })}
+                </View>
+              )}
+              {requestStatus === 'pending' && (
+                <Text style={s.statusTimer}>
+                  {pendingSecondsLeft > 0
+                    ? `Offer window ${Math.floor(pendingSecondsLeft / 60)}:${String(pendingSecondsLeft % 60).padStart(2, '0')} · we re-dispatch if no one accepts`
+                    : 'Re-dispatching to the next nearest truck…'}
+                </Text>
+              )}
+              {activeStatus ? (
+                <Pressable
+                  accessibilityRole="button"
+                  disabled={cancelling}
+                  onPress={cancelActiveRequest}
+                  style={[s.cancelButton, cancelling && s.cancelButtonOff]}
+                >
+                  {cancelling
+                    ? <ActivityIndicator size="small" color="#F87171" />
+                    : <Text style={s.cancelText}>Cancel request</Text>}
+                </Pressable>
+              ) : (
+                <Pressable accessibilityRole="button" onPress={resetRequest} style={[s.cta, { marginHorizontal: 0 }]}>
+                  <Text style={s.ctaText}>{requestStatus === 'completed' ? 'Done' : 'Request another tow'}</Text>
+                </Pressable>
+              )}
+            </View>
+          ) : (
+            <Pressable
+              onPress={request}
+              disabled={!selected || needsDest || quoteRefreshing || requesting}
+              accessibilityRole="button"
+              style={[s.cta, (!selected || needsDest || requesting) && s.ctaOff, { marginBottom: bottom + 8 }]}
+            >
+              <Text style={s.ctaText}>
+                {needsDest ? 'Enter a destination for your price'
+                  : !selected ? 'Choose a truck'
+                  : quoteRefreshing ? 'Updating route-based ZAR estimate…'
+                  : requesting ? 'Sending request…'
+                  : `Request Tow  ·  ${zarRange(selected.priceMin, selected.priceMax)}`}
+              </Text>
+            </Pressable>
+          )}
         </BottomSheetView>
       </BottomSheet>
     </View>
@@ -454,6 +622,20 @@ const s = StyleSheet.create({
   serviceRow: { flexDirection: 'row', gap: 8, paddingHorizontal: 16 },
   serviceChoice: { flex: 1, minHeight: 46, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, borderRadius: 14, borderWidth: 1, borderColor: colors.border, backgroundColor: 'rgba(30,41,59,0.6)', paddingHorizontal: 6 },
   serviceChoiceSelected: { borderColor: colors.go, backgroundColor: 'rgba(0,230,118,0.10)' },
+  serviceChoiceOff: { opacity: 0.5 },
+  statusPanel: { marginHorizontal: 16, gap: 8, padding: 16, borderRadius: 16, borderWidth: 1, borderColor: colors.border, backgroundColor: 'rgba(30,41,59,0.55)' },
+  statusTitle: { color: colors.text, fontFamily: font.bold, fontSize: 16 },
+  statusSubtitle: { color: colors.textMuted, fontFamily: font.medium, fontSize: 13, lineHeight: 18 },
+  statusCompany: { color: colors.route, fontFamily: font.semibold, fontSize: 12 },
+  timeline: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 2 },
+  chip: { paddingHorizontal: 10, paddingVertical: 6, borderRadius: 999, borderWidth: 1, borderColor: colors.border, backgroundColor: 'rgba(15,23,42,0.6)' },
+  chipOn: { borderColor: colors.go, backgroundColor: 'rgba(0,230,118,0.12)' },
+  chipText: { color: colors.textMuted, fontFamily: font.semibold, fontSize: 11 },
+  chipTextOn: { color: colors.go },
+  statusTimer: { color: colors.warn, fontFamily: font.medium, fontSize: 12 },
+  cancelButton: { height: 46, borderRadius: 14, borderWidth: 1, borderColor: 'rgba(220,38,38,0.6)', alignItems: 'center', justifyContent: 'center' },
+  cancelButtonOff: { opacity: 0.6 },
+  cancelText: { color: '#F87171', fontFamily: font.semibold, fontSize: 14 },
   serviceName: { color: colors.textMuted, fontFamily: font.semibold, fontSize: 12 },
   tracking: { color: colors.route, fontFamily: font.medium, fontSize: 12, paddingHorizontal: 20 },
   empty: { color: colors.textMuted, fontFamily: font.medium, fontSize: 14, paddingHorizontal: 20, lineHeight: 20 },

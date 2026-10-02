@@ -4,25 +4,50 @@ import MapView, { PROVIDER_GOOGLE } from 'react-native-maps';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 
-import { supabase } from '../../../src/api';
+import { supabase, isTerminalRequestStatus, transitionRequest, type RequestAction, type RequestStatus } from '../../../src/api';
 import { startDriverLocationStream } from '../../../src/driverLocation';
 import { colors, darkMapStyle, font, radius, zar } from '../../../src/theme';
 
 type BreakdownType = 'flatbed' | 'jumpstart' | 'lockout';
-type JobAlert = { id: string; breakdownType: BreakdownType; distanceKm: number; quotedPrice: number };
+type JobAlert = {
+  id: string;
+  breakdownType: BreakdownType;
+  distanceKm: number;
+  quotedPrice: number;
+  status: RequestStatus;
+  expiresAt: string | null;
+};
 
 const JHB = { latitude: -26.2041, longitude: 28.0473, latitudeDelta: 0.08, longitudeDelta: 0.08 };
 const SERVICE_LABEL: Record<BreakdownType, string> = { flatbed: 'Flatbed', jumpstart: 'Jumpstart', lockout: 'Lockout' };
+const KNOWN_STATUSES: RequestStatus[] = ['pending', 'accepted', 'en_route', 'arrived', 'completed', 'cancelled', 'declined', 'expired'];
+const OPEN_STATUSES: RequestStatus[] = ['pending', 'accepted', 'en_route', 'arrived'];
+const STATUS_HEADLINE: Record<string, { eyebrow: string; title: string }> = {
+  pending: { eyebrow: 'NEW JOB ALERT', title: 'Tow request assigned' },
+  accepted: { eyebrow: 'JOB ACCEPTED', title: 'Head to the pickup point' },
+  en_route: { eyebrow: 'EN ROUTE', title: 'Driving to the pickup' },
+  arrived: { eyebrow: 'ARRIVED', title: 'At the breakdown scene' },
+};
+const NEXT_STEP: Partial<Record<RequestStatus, { action: RequestAction; label: string }>> = {
+  accepted: { action: 'en_route', label: 'Start driving' },
+  en_route: { action: 'arrived', label: "I've arrived" },
+  arrived: { action: 'completed', label: 'Complete job' },
+};
 
 function mapJob(row: Record<string, unknown>): JobAlert | null {
   if (typeof row.id !== 'string') return null;
   const value = row.breakdown_type;
   const breakdownType: BreakdownType = value === 'jumpstart' || value === 'lockout' ? value : 'flatbed';
+  const status: RequestStatus = KNOWN_STATUSES.includes(row.status as RequestStatus)
+    ? (row.status as RequestStatus)
+    : 'pending';
   return {
     id: row.id,
     breakdownType,
     distanceKm: Number(row.estimated_distance_km) || 0,
     quotedPrice: Number(row.estimated_price_min) || 0,
+    status,
+    expiresAt: typeof row.expires_at === 'string' ? row.expires_at : null,
   };
 }
 
@@ -34,6 +59,9 @@ export default function DriverRoute() {
   const [online, setOnline] = useState(false);
   const [locationError, setLocationError] = useState<string | null>(null);
   const [jobAlert, setJobAlert] = useState<JobAlert | null>(null);
+  const [acting, setActing] = useState(false);
+  const [actionError, setActionError] = useState<string | null>(null);
+  const [clockMs, setClockMs] = useState(() => Date.now());
 
   const loadAssignment = useCallback(async () => {
     setAssignmentLoading(true);
@@ -95,17 +123,29 @@ export default function DriverRoute() {
     let channel: ReturnType<typeof supabase.channel> | undefined;
     const receive = (row: Record<string, unknown>) => {
       const alert = mapJob(row);
-      if (active && alert) setJobAlert(alert);
+      if (!active || !alert) return;
+      if (isTerminalRequestStatus(alert.status)) {
+        // Closed elsewhere (motorist cancelled, dispatch expired, …).
+        setJobAlert((previous) => (previous && previous.id === alert.id ? null : previous));
+        return;
+      }
+      setJobAlert((previous) => {
+        if (!previous || previous.id === alert.id) return alert;
+        // A newer pending offer wins; an active job is never replaced.
+        if (previous.status === 'pending' && alert.status === 'pending') return alert;
+        return previous;
+      });
     };
 
-    // Load an outstanding offer after subscribing, so opening the app late does
-    // not miss an already-created request for this driver's assigned vehicle.
+    // Load an outstanding offer or active job after subscribing, so opening
+    // the app late does not miss a pending request or an in-progress job for
+    // this driver's assigned vehicle.
     void supabase
       .from('tow_requests')
-      .select('id, breakdown_type, estimated_distance_km, estimated_price_min')
+      .select('id, status, expires_at, breakdown_type, estimated_distance_km, estimated_price_min')
       .eq('assigned_vehicle_id', vehicleId)
-      .eq('status', 'pending')
-      .order('created_at', { ascending: true })
+      .in('status', OPEN_STATUSES)
+      .order('created_at', { ascending: false })
       .limit(1)
       .maybeSingle()
       .then(({ data, error }) => {
@@ -121,9 +161,18 @@ export default function DriverRoute() {
       channel = supabase
         .channel(`driver-job:${vehicleId}`, { config: { private: true } })
         .on('postgres_changes', {
-          event: 'INSERT', schema: 'public', table: 'tow_requests',
+          event: '*', schema: 'public', table: 'tow_requests',
           filter: `assigned_vehicle_id=eq.${vehicleId}`,
-        }, (payload) => receive(payload.new as Record<string, unknown>))
+        }, (payload) => {
+          if (payload.eventType === 'DELETE') {
+            const oldId = (payload.old as { id?: string } | null)?.id;
+            if (active && oldId) {
+              setJobAlert((previous) => (previous && previous.id === oldId ? null : previous));
+            }
+            return;
+          }
+          receive(payload.new as Record<string, unknown>);
+        })
         .subscribe();
     })().catch((error: unknown) => {
       if (active) setLocationError(error instanceof Error ? error.message : 'Could not connect to job alerts.');
@@ -143,6 +192,53 @@ export default function DriverRoute() {
     setJobAlert(null);
     setOnline(value);
   };
+
+  // Offer countdown while a request is still pending.
+  useEffect(() => {
+    if (jobAlert?.status !== 'pending') return;
+    setClockMs(Date.now());
+    const timer = setInterval(() => setClockMs(Date.now()), 1000);
+    return () => clearInterval(timer);
+  }, [jobAlert?.status, jobAlert?.id]);
+
+  const offerSecondsLeft = jobAlert?.status === 'pending'
+    ? jobAlert.expiresAt
+      ? Math.max(0, Math.ceil((new Date(jobAlert.expiresAt).getTime() - clockMs) / 1000))
+      : 90
+    : 0;
+
+  // Accept / decline / en route / arrived / complete — the API owns the state
+  // machine, so a stale or raced action simply resolves to a 403/409 here.
+  const runAction = async (action: RequestAction) => {
+    if (!jobAlert || acting) return;
+    setActing(true);
+    setActionError(null);
+    try {
+      const updated = await transitionRequest(jobAlert.id, action);
+      if (action === 'decline' || isTerminalRequestStatus(updated.status)) {
+        setJobAlert(null);
+        if (action === 'completed') {
+          Alert.alert('Job completed', 'The request is closed. Nice work.');
+        }
+        return;
+      }
+      setJobAlert({ ...jobAlert, status: updated.status, expiresAt: updated.expires_at ?? null });
+    } catch (error) {
+      const status = (error as { status?: number }).status;
+      if (status === 403 || status === 404 || status === 409) {
+        // Offer expired, was reassigned, or the request closed elsewhere.
+        setJobAlert(null);
+        return;
+      }
+      setActionError(error instanceof Error ? error.message : 'Could not update the request. Try again.');
+    } finally {
+      setActing(false);
+    }
+  };
+
+  const headline = (jobAlert && STATUS_HEADLINE[jobAlert.status]) ?? STATUS_HEADLINE.pending;
+  const nextStep = jobAlert ? NEXT_STEP[jobAlert.status] : undefined;
+  const offerPending = jobAlert?.status === 'pending';
 
   const switchAccount = async () => {
     const { error } = await supabase.auth.signOut();
@@ -206,9 +302,9 @@ export default function DriverRoute() {
       >
         <View style={styles.modalBackdrop}>
           <View style={styles.alertCard}>
-            <View style={styles.alertIcon}><Ionicons name="notifications" size={23} color={colors.bg} /></View>
-            <Text style={styles.alertEyebrow}>NEW JOB ALERT</Text>
-            <Text style={styles.alertTitle}>Tow request assigned</Text>
+            <View style={styles.alertIcon}><Ionicons name={offerPending ? 'notifications' : 'navigate'} size={23} color={colors.bg} /></View>
+            <Text style={styles.alertEyebrow}>{headline.eyebrow}</Text>
+            <Text style={styles.alertTitle}>{headline.title}</Text>
             {jobAlert && (
               <>
                 <View style={styles.jobRow}><Text style={styles.jobLabel}>Service</Text><Text style={styles.jobValue}>{SERVICE_LABEL[jobAlert.breakdownType]}</Text></View>
@@ -217,9 +313,45 @@ export default function DriverRoute() {
                 <Text style={styles.jobRef}>Request {jobAlert.id.slice(0, 8).toUpperCase()}</Text>
               </>
             )}
-            <Pressable accessibilityRole="button" onPress={() => setJobAlert(null)} style={styles.ackButton}>
-              <Text style={styles.ackText}>Got it</Text>
-            </Pressable>
+            {offerPending && (
+              <Text style={styles.offerTimer}>
+                {offerSecondsLeft > 0
+                  ? `Offer expires in ${Math.floor(offerSecondsLeft / 60)}:${String(offerSecondsLeft % 60).padStart(2, '0')}`
+                  : 'Offer expired · waiting for a dispatch update'}
+              </Text>
+            )}
+            {actionError && <Text style={styles.actionError}>{actionError}</Text>}
+            {offerPending ? (
+              <View style={styles.actionRow}>
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel="Accept tow request"
+                  disabled={acting || offerSecondsLeft <= 0}
+                  onPress={() => { void runAction('accept'); }}
+                  style={[styles.acceptButton, (acting || offerSecondsLeft <= 0) && styles.buttonOff]}
+                >
+                  {acting ? <ActivityIndicator color={colors.bg} /> : <Text style={styles.acceptText}>Accept job</Text>}
+                </Pressable>
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel="Decline tow request"
+                  disabled={acting}
+                  onPress={() => { void runAction('decline'); }}
+                  style={[styles.declineButton, acting && styles.buttonOff]}
+                >
+                  <Text style={styles.declineText}>Decline</Text>
+                </Pressable>
+              </View>
+            ) : nextStep ? (
+              <Pressable
+                accessibilityRole="button"
+                disabled={acting}
+                onPress={() => { void runAction(nextStep.action); }}
+                style={[styles.ackButton, acting && styles.buttonOff]}
+              >
+                {acting ? <ActivityIndicator color={colors.bg} /> : <Text style={styles.ackText}>{nextStep.label}</Text>}
+              </Pressable>
+            ) : null}
           </View>
         </View>
       </Modal>
@@ -255,6 +387,14 @@ const styles = StyleSheet.create({
   jobLabel: { color: colors.textMuted, fontFamily: font.medium, fontSize: 13 },
   jobValue: { color: colors.text, fontFamily: font.semibold, fontSize: 14 },
   jobRef: { color: colors.textMuted, fontFamily: font.medium, fontSize: 11, marginTop: 3 },
+  offerTimer: { color: colors.warn, fontFamily: font.semibold, fontSize: 12 },
+  actionError: { color: colors.warn, fontFamily: font.medium, fontSize: 12, lineHeight: 17 },
+  actionRow: { flexDirection: 'row', gap: 10, marginTop: 6 },
+  acceptButton: { flex: 1, height: 50, borderRadius: 15, backgroundColor: colors.go, alignItems: 'center', justifyContent: 'center' },
+  acceptText: { color: colors.bg, fontFamily: font.bold, fontSize: 15 },
+  declineButton: { flex: 1, height: 50, borderRadius: 15, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surfaceRaised, alignItems: 'center', justifyContent: 'center' },
+  declineText: { color: colors.text, fontFamily: font.semibold, fontSize: 15 },
+  buttonOff: { opacity: 0.55 },
   ackButton: { height: 50, borderRadius: 15, backgroundColor: colors.go, alignItems: 'center', justifyContent: 'center', marginTop: 6 },
   ackText: { color: colors.bg, fontFamily: font.bold, fontSize: 15 },
 });

@@ -35,6 +35,34 @@ export type DriverLocation = LatLng & {
 
 export type LocationChannelStatus = 'connecting' | 'connected' | 'error';
 export type BreakdownType = 'flatbed' | 'jumpstart' | 'lockout';
+export type RequestStatus =
+  | 'pending'
+  | 'accepted'
+  | 'en_route'
+  | 'arrived'
+  | 'completed'
+  | 'cancelled'
+  | 'declined'
+  | 'expired';
+export type RequestAction = 'accept' | 'decline' | 'en_route' | 'arrived' | 'completed' | 'cancel';
+
+const ACTIVE_REQUEST_STATUSES: RequestStatus[] = ['pending', 'accepted', 'en_route', 'arrived'];
+const TERMINAL_REQUEST_STATUSES: RequestStatus[] = ['completed', 'cancelled', 'declined', 'expired'];
+export const isActiveRequestStatus = (status: RequestStatus) => ACTIVE_REQUEST_STATUSES.includes(status);
+export const isTerminalRequestStatus = (status: RequestStatus) => TERMINAL_REQUEST_STATUSES.includes(status);
+
+export type TowRequest = {
+  id: string;
+  status: RequestStatus;
+  expires_at?: string | null;
+  created_at?: string;
+  assigned_vehicle_id?: string | null;
+  estimated_distance_km?: number;
+  breakdown_type?: BreakdownType;
+  estimated_price_min?: number;
+  estimated_price_max?: number;
+  towing_companies?: { company_name: string } | null;
+};
 export type PlaceSuggestion = {
   placeId: string;
   description: string;
@@ -58,12 +86,18 @@ async function token() {
   return anon.session!.access_token;
 }
 
+export type ApiError = Error & { status?: number };
+
 async function call<T>(path: string, init?: RequestInit, auth = false): Promise<T> {
   const headers: Record<string, string> = { 'Content-Type': 'application/json' };
   if (auth) headers.Authorization = `Bearer ${await token()}`;
   const res = await fetch(`${API}${path}`, { ...init, headers });
   const body = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(body.error ?? 'Request failed');
+  if (!res.ok) {
+    const error: ApiError = new Error(body.error ?? 'Request failed');
+    error.status = res.status;
+    throw error;
+  }
   return body as T;
 }
 
@@ -119,7 +153,27 @@ export function fetchRoadRoute(origin: LatLng, placeId: string, sessionToken: st
 }
 
 export const createRequest = (b: { pickup: LatLng; dropoff: LatLng; vehicleId: string; tripDistanceKm: number; breakdownType: BreakdownType }) =>
-  call<{ request: { id: string; status: string; estimated_price_min: number; estimated_price_max: number } }>('/api/requests', { method: 'POST', body: JSON.stringify(b) }, true);
+  call<{ request: TowRequest; truck: Truck }>('/api/requests', { method: 'POST', body: JSON.stringify(b) }, true);
+
+// Poll one of your own requests; the API resolves stale offers as part of the read.
+export const getRequest = (requestId: string) =>
+  call<{ request: TowRequest }>(`/api/requests/${encodeURIComponent(requestId)}`, undefined, true).then((r) => r.request);
+
+// The signed-in motorist's current request, if any (used to resume status after an app restart).
+export const fetchActiveRequest = () =>
+  call<{ request: TowRequest | null }>('/api/requests/active', undefined, true).then((r) => r.request);
+
+// Driver accepts/progresses; motorists cancel. The API enforces who may act.
+export function transitionRequest(requestId: string, action: RequestAction) {
+  const path = `/api/requests/${encodeURIComponent(requestId)}`;
+  if (action === 'accept' || action === 'decline') {
+    return call<{ request: TowRequest }>(`${path}/${action}`, { method: 'POST' }, true).then((r) => r.request);
+  }
+  if (action === 'cancel') {
+    return call<{ request: TowRequest }>(`${path}/cancel`, { method: 'POST' }, true).then((r) => r.request);
+  }
+  return call<{ request: TowRequest }>(`${path}/status`, { method: 'POST', body: JSON.stringify({ action }) }, true).then((r) => r.request);
+}
 
 export function sendDriverLocation(vehicleId: string, position: DriverLocation) {
   return call<void>(`/api/vehicles/${encodeURIComponent(vehicleId)}/location`, {
