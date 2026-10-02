@@ -20,6 +20,7 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
 const lat = z.coerce.number().min(-90).max(90);
 const lng = z.coerce.number().min(-180).max(180);
 const point = z.object({ lat, lng });
+const sessionToken = z.string().min(16).max(128);
 
 const nearbyQuery = z.object({
   lat, lng,
@@ -39,6 +40,16 @@ const requestBody = z.object({
   tripDistanceKm: z.number().min(0.5).max(1500),
   breakdownType: z.enum(['flatbed', 'jumpstart', 'lockout']).default('flatbed'),
 });
+const autocompleteBody = z.object({
+  input: z.string().trim().min(2).max(120),
+  origin: point.optional(),
+  sessionToken,
+});
+const routeBody = z.object({
+  origin: point,
+  placeId: z.string().regex(/^[A-Za-z0-9_-]{8,180}$/),
+  sessionToken,
+});
 
 // ---- Helpers ----
 const ewkt = (p) => `SRID=4326;POINT(${p.lng} ${p.lat})`;
@@ -46,6 +57,27 @@ const numeric = (value, fallback = 0) => {
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : fallback;
 };
+const httpError = (status, message) => Object.assign(new Error(message), { statusCode: status, publicMessage: message });
+
+async function googleJson(url, options) {
+  const response = await fetch(url, options);
+  const body = await response.json().catch(() => null);
+  if (!response.ok) {
+    // Do not log the user's query/address or disclose provider diagnostics to clients.
+    console.warn(`Google Maps proxy upstream error: HTTP ${response.status} (${body?.error?.status ?? 'unknown'})`);
+    throw httpError(502, 'Google Maps is temporarily unavailable. Please try again.');
+  }
+  return body ?? {};
+}
+
+function mapsKeyOrRespond(res) {
+  const key = process.env.GOOGLE_MAPS_SERVER_API_KEY;
+  if (!key) {
+    res.status(503).json({ error: 'Address search and road directions are not configured on the API server.' });
+    return null;
+  }
+  return key;
+}
 
 // Maps the stable get_nearby_vehicles RPC column contract into the mobile API.
 function normalizeVehicle(r) {
@@ -101,6 +133,20 @@ app.use(helmet());
 app.use(cors());
 app.use(express.json({ limit: '50kb' }));
 app.use(rateLimit({ windowMs: 60_000, limit: 600 }));
+const placesLimit = rateLimit({
+  windowMs: 60_000,
+  limit: 60,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many address searches. Please wait a moment and try again.' },
+});
+const routesLimit = rateLimit({
+  windowMs: 60_000,
+  limit: 20,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many route requests. Please wait a moment and try again.' },
+});
 
 app.get('/health', (_req, res) => res.json({ ok: true }));
 
@@ -112,7 +158,105 @@ app.get('/api/vehicles/nearby', wrap(async (req, res) => {
   res.json({ vehicles });
 }));
 
-// 2) Driver GPS ping. The database verifies fleet ownership or an active driver assignment.
+// 2) Google Places Autocomplete (New). The restricted server key never reaches the app.
+app.post('/api/places/autocomplete', requireUser, placesLimit, wrap(async (req, res) => {
+  const body = parse(autocompleteBody, req.body, res); if (!body) return;
+  const key = mapsKeyOrRespond(res); if (!key) return;
+  const input = {
+    input: body.input,
+    includedRegionCodes: ['za'],
+    languageCode: 'en',
+    regionCode: 'za',
+    includeQueryPredictions: false,
+    sessionToken: body.sessionToken,
+  };
+  if (body.origin) {
+    input.locationBias = {
+      circle: {
+        center: { latitude: body.origin.lat, longitude: body.origin.lng },
+        radius: 50_000,
+      },
+    };
+  }
+  const result = await googleJson('https://places.googleapis.com/v1/places:autocomplete', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-Goog-Api-Key': key,
+      'X-Goog-FieldMask': [
+        'suggestions.placePrediction.placeId',
+        'suggestions.placePrediction.text.text',
+        'suggestions.placePrediction.structuredFormat.mainText.text',
+        'suggestions.placePrediction.structuredFormat.secondaryText.text',
+      ].join(','),
+    },
+    body: JSON.stringify(input),
+  });
+
+  const suggestions = (result.suggestions ?? []).flatMap(({ placePrediction: p }) => {
+    if (!p?.placeId || !p?.text?.text) return [];
+    return [{
+      placeId: p.placeId,
+      description: p.text.text,
+      primaryText: p.structuredFormat?.mainText?.text ?? p.text.text,
+      secondaryText: p.structuredFormat?.secondaryText?.text ?? '',
+    }];
+  });
+  res.json({ suggestions });
+}));
+
+// 3) Resolve the chosen place (ending its Places billing session), then ask Routes API
+// for the real driving distance, traffic-aware ETA, and encoded road polyline.
+app.post('/api/routes', requireUser, routesLimit, wrap(async (req, res) => {
+  const body = parse(routeBody, req.body, res); if (!body) return;
+  const key = mapsKeyOrRespond(res); if (!key) return;
+
+  const placeUrl = new URL(`https://places.googleapis.com/v1/places/${encodeURIComponent(body.placeId)}`);
+  placeUrl.searchParams.set('sessionToken', body.sessionToken);
+  const place = await googleJson(placeUrl, {
+    headers: {
+      'X-Goog-Api-Key': key,
+      'X-Goog-FieldMask': 'id,formattedAddress,location',
+    },
+  });
+  const destination = place.location;
+  if (!Number.isFinite(destination?.latitude) || !Number.isFinite(destination?.longitude)) {
+    throw httpError(422, 'Google did not return a routable location for this destination. Choose another result.');
+  }
+
+  const routeResult = await googleJson('https://routes.googleapis.com/directions/v2:computeRoutes', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-Goog-Api-Key': key,
+      'X-Goog-FieldMask': 'routes.distanceMeters,routes.duration,routes.polyline.encodedPolyline',
+    },
+    body: JSON.stringify({
+      origin: { location: { latLng: { latitude: body.origin.lat, longitude: body.origin.lng } } },
+      destination: { location: { latLng: { latitude: destination.latitude, longitude: destination.longitude } } },
+      travelMode: 'DRIVE',
+      routingPreference: 'TRAFFIC_AWARE',
+      polylineQuality: 'OVERVIEW',
+      polylineEncoding: 'ENCODED_POLYLINE',
+      units: 'METRIC',
+      regionCode: 'ZA',
+    }),
+  });
+  const route = routeResult.routes?.[0];
+  if (!route?.polyline?.encodedPolyline || !Number.isFinite(route.distanceMeters)) {
+    throw httpError(422, 'No driving route was found for this destination. Choose another result.');
+  }
+  const durationSeconds = Number.parseFloat(String(route.duration ?? '').replace(/s$/, ''));
+  res.json({
+    destination: { lat: destination.latitude, lng: destination.longitude },
+    address: place.formattedAddress ?? '',
+    distanceKm: route.distanceMeters / 1000,
+    durationMinutes: Number.isFinite(durationSeconds) ? Math.max(1, Math.round(durationSeconds / 60)) : null,
+    encodedPolyline: route.polyline.encodedPolyline,
+  });
+}));
+
+// 4) Driver GPS ping. The database verifies fleet ownership or an active driver assignment.
 // A trigger updates the vehicle's PostGIS point and broadcasts only to active request topics.
 app.patch('/api/vehicles/:id/location', requireUser, wrap(async (req, res) => {
   const id = z.string().uuid().safeParse(req.params.id);
@@ -133,7 +277,7 @@ app.patch('/api/vehicles/:id/location', requireUser, wrap(async (req, res) => {
   res.status(204).end();
 }));
 
-// 3) Create a tow request. Recompute the fare immediately before insert; never trust client prices.
+// 5) Create a tow request. Recompute the fare immediately before insert; never trust client prices.
 app.post('/api/requests', requireUser, wrap(async (req, res) => {
   const b = parse(requestBody, req.body, res); if (!b) return;
 
@@ -183,7 +327,7 @@ app.post('/api/requests', requireUser, wrap(async (req, res) => {
   res.status(201).json({ request: data, truck: { ...chosen, priceMin: total, priceMax: total } });
 }));
 
-// 4) Poll/read one of your own requests.
+// 6) Poll/read one of your own requests.
 app.get('/api/requests/:id', requireUser, wrap(async (req, res) => {
   const id = z.string().uuid().safeParse(req.params.id);
   if (!id.success) return res.status(400).json({ error: 'Invalid request id' });
@@ -200,6 +344,9 @@ app.get('/api/requests/:id', requireUser, wrap(async (req, res) => {
 
 // eslint-disable-next-line no-unused-vars
 app.use((err, _req, res, _next) => {
+  if (err.statusCode && err.publicMessage) {
+    return res.status(err.statusCode).json({ error: err.publicMessage });
+  }
   console.error(err);
   res.status(500).json({ error: 'Something went wrong. Try again.' });
 });

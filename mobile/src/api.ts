@@ -35,6 +35,19 @@ export type DriverLocation = LatLng & {
 
 export type LocationChannelStatus = 'connecting' | 'connected' | 'error';
 export type BreakdownType = 'flatbed' | 'jumpstart' | 'lockout';
+export type PlaceSuggestion = {
+  placeId: string;
+  description: string;
+  primaryText: string;
+  secondaryText: string;
+};
+export type RoadRoute = {
+  destination: LatLng;
+  address: string;
+  distanceKm: number;
+  durationMinutes: number | null;
+  coordinates: LatLng[];
+};
 
 // Motorists sign in anonymously so requests are tied to an auth user.
 // Enable "Anonymous sign-ins" in Supabase > Authentication > Providers.
@@ -59,6 +72,52 @@ export const fetchNearby = (p: LatLng, distanceKm: number) =>
   call<{ vehicles: Truck[] }>(
     `/api/vehicles/nearby?lat=${p.lat}&lng=${p.lng}&distance_km=${distanceKm}`,
   ).then((r) => r.vehicles);
+
+export function fetchPlaceSuggestions(input: string, origin: LatLng, sessionToken: string) {
+  return call<{ suggestions: PlaceSuggestion[] }>('/api/places/autocomplete', {
+    method: 'POST',
+    body: JSON.stringify({ input, origin, sessionToken }),
+  }, true).then((r) => r.suggestions);
+}
+
+function decodePolyline(encoded: string): LatLng[] {
+  const points: LatLng[] = [];
+  let index = 0;
+  let lat = 0;
+  let lng = 0;
+  while (index < encoded.length) {
+    let result = 0;
+    let shift = 0;
+    let byte: number;
+    do {
+      byte = encoded.charCodeAt(index++) - 63;
+      result |= (byte & 0x1f) << shift;
+      shift += 5;
+    } while (byte >= 0x20 && index < encoded.length);
+    lat += (result & 1) ? ~(result >> 1) : result >> 1;
+
+    result = 0;
+    shift = 0;
+    do {
+      byte = encoded.charCodeAt(index++) - 63;
+      result |= (byte & 0x1f) << shift;
+      shift += 5;
+    } while (byte >= 0x20 && index < encoded.length);
+    lng += (result & 1) ? ~(result >> 1) : result >> 1;
+    points.push({ lat: lat / 1e5, lng: lng / 1e5 });
+  }
+  return points;
+}
+
+export function fetchRoadRoute(origin: LatLng, placeId: string, sessionToken: string) {
+  return call<Omit<RoadRoute, 'coordinates'> & { encodedPolyline: string }>('/api/routes', {
+    method: 'POST',
+    body: JSON.stringify({ origin, placeId, sessionToken }),
+  }, true).then((route): RoadRoute => ({
+    ...route,
+    coordinates: decodePolyline(route.encodedPolyline),
+  }));
+}
 
 export const createRequest = (b: { pickup: LatLng; dropoff: LatLng; vehicleId: string; tripDistanceKm: number; breakdownType: BreakdownType }) =>
   call<{ request: { id: string; status: string; estimated_price_min: number; estimated_price_max: number } }>('/api/requests', { method: 'POST', body: JSON.stringify(b) }, true);

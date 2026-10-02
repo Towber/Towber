@@ -9,7 +9,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { colors, darkMapStyle, font, radius, zarRange } from '../../../src/theme';
-import { type BreakdownType, createRequest, fetchNearby, type LatLng, roadKm, subscribeRequestDriverLocation, type Truck } from '../../../src/api';
+import { type BreakdownType, createRequest, fetchNearby, fetchPlaceSuggestions, fetchRoadRoute, type LatLng, type PlaceSuggestion, type RoadRoute, roadKm, subscribeRequestDriverLocation, type Truck } from '../../../src/api';
 import { SearchBar } from '../../../src/components/SearchBar';
 import { TruckCard, TruckCardSkeleton, CARD_WIDTH } from '../../../src/components/TruckCard';
 import { TruckMarker } from '../../../src/components/TruckMarker';
@@ -17,6 +17,7 @@ import { TruckMarker } from '../../../src/components/TruckMarker';
 // Johannesburg CBD fallback if location permission is denied
 const FALLBACK: LatLng = { lat: -26.2041, lng: 28.0473 };
 const DEFAULT_TRIP_KM = 10;
+const newPlacesSessionToken = () => `towber-${Date.now()}-${Math.random().toString(36).slice(2)}`;
 const BREAKDOWN_SERVICES: { id: BreakdownType; label: string; icon: React.ComponentProps<typeof Ionicons>['name'] }[] = [
   { id: 'flatbed', label: 'Flatbed', icon: 'car-outline' },
   { id: 'jumpstart', label: 'Jumpstart', icon: 'flash-outline' },
@@ -37,16 +38,23 @@ export default function HomeScreen() {
   const map = useRef<MapView>(null);
   const [me, setMe] = useState<LatLng | null>(null);
   const [dest, setDest] = useState<LatLng | null>(null);
+  const [route, setRoute] = useState<RoadRoute | null>(null);
   const [trucks, setTrucks] = useState<Truck[]>([]);
+  const [quoteDistanceKm, setQuoteDistanceKm] = useState<number | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [searching, setSearching] = useState(false);
+  const [suggesting, setSuggesting] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [placeSuggestions, setPlaceSuggestions] = useState<PlaceSuggestion[]>([]);
+  const [searchError, setSearchError] = useState<string | null>(null);
+  const placesSessionToken = useRef(newPlacesSessionToken());
   const [requesting, setRequesting] = useState(false);
   const [activeRequestId, setActiveRequestId] = useState<string | null>(null);
   const [trackingState, setTrackingState] = useState<TrackingState>('idle');
   const [breakdownType, setBreakdownType] = useState<BreakdownType>('flatbed');
 
-  const tripKm = useMemo(() => (me && dest ? roadKm(me, dest) : DEFAULT_TRIP_KM), [me, dest]);
+  const tripKm = useMemo(() => route?.distanceKm ?? (me && dest ? roadKm(me, dest) : DEFAULT_TRIP_KM), [me, dest, route]);
   const selected = trucks.find((t) => t.vehicleId === selectedId) ?? null;
 
 // Ask for permission when the client route mounts; the resulting GPS fix is
@@ -60,11 +68,41 @@ export default function HomeScreen() {
     })().catch(() => setMe(FALLBACK));
   }, []);
 
+  // Debounced Places (New) search, biased toward the motorist and restricted to South Africa.
+  useEffect(() => {
+    const query = searchQuery.trim();
+    if (!me || query.length < 3 || dest) {
+      setPlaceSuggestions([]);
+      setSuggesting(false);
+      return;
+    }
+    let current = true;
+    const timer = setTimeout(() => {
+      setSuggesting(true);
+      fetchPlaceSuggestions(query, me, placesSessionToken.current)
+        .then((suggestions) => {
+          if (current) {
+            setPlaceSuggestions(suggestions);
+            setSearchError(null);
+          }
+        })
+        .catch((error: unknown) => {
+          if (current) {
+            setPlaceSuggestions([]);
+            setSearchError(error instanceof Error ? error.message : 'Address search is unavailable. Try again.');
+          }
+        })
+        .finally(() => { if (current) setSuggesting(false); });
+    }, 350);
+    return () => { current = false; clearTimeout(timer); };
+  }, [searchQuery, me, dest]);
+
   // 2) Load nearby trucks + dynamic ZAR quotes, refresh every 30s.
   const load = useCallback(async () => {
     if (!me) return;
     try {
       setTrucks(await fetchNearby(me, tripKm));
+      setQuoteDistanceKm(tripKm);
     } catch (e: any) {
       Alert.alert('Could not load tow trucks', e.message ?? 'Check your connection and try again.');
     } finally {
@@ -126,13 +164,32 @@ export default function HomeScreen() {
     }
   }, [me, dest]);
 
-  const searchDestination = async (query: string) => {
+  const changeDestinationQuery = (query: string) => {
+    setSearchQuery(query);
+    setDest(null);
+    setRoute(null);
+    setSearchError(null);
+    setPlaceSuggestions([]);
+  };
+
+  const selectDestination = async (suggestion: PlaceSuggestion) => {
+    if (!me) return;
+    setPlaceSuggestions([]);
+    setSearchQuery('');
+    setSearchError(null);
     setSearching(true);
+    const selectedSessionToken = placesSessionToken.current;
+    placesSessionToken.current = newPlacesSessionToken();
     try {
-      const hits = await Location.geocodeAsync(`${query}, South Africa`);
-      if (!hits.length) return Alert.alert('No match', 'Try a street name, suburb or landmark.');
-      setDest({ lat: hits[0].latitude, lng: hits[0].longitude });
+      const drivingRoute = await fetchRoadRoute(me, suggestion.placeId, selectedSessionToken);
+      if (drivingRoute.coordinates.length < 2) throw new Error('No road route was returned. Choose another destination.');
+      setRoute(drivingRoute);
+      setDest(drivingRoute.destination);
       Haptics.selectionAsync();
+    } catch (error: unknown) {
+      setDest(null);
+      setRoute(null);
+      setSearchError(error instanceof Error ? error.message : 'Could not build a driving route. Try another destination.');
     } finally {
       setSearching(false);
     }
@@ -166,6 +223,7 @@ export default function HomeScreen() {
   };
 
   const needsDest = !dest;
+  const quoteRefreshing = quoteDistanceKm !== tripKm;
   const trackingCopy: Record<Exclude<TrackingState, 'idle'>, string> = {
     connecting: 'Connecting to private driver tracking…',
     connected: 'Private tracking connected · waiting for a GPS update',
@@ -185,10 +243,10 @@ export default function HomeScreen() {
         toolbarEnabled={false}
         initialRegion={{ latitude: FALLBACK.lat, longitude: FALLBACK.lng, latitudeDelta: 0.2, longitudeDelta: 0.2 }}
       >
-        {me && dest && (
+        {route && route.coordinates.length > 1 && (
           <Polyline
-            coordinates={[{ latitude: me.lat, longitude: me.lng }, { latitude: dest.lat, longitude: dest.lng }]}
-            strokeColor={colors.route} strokeWidth={4} lineDashPattern={[1]}
+            coordinates={route.coordinates.map((point) => ({ latitude: point.lat, longitude: point.lng }))}
+            strokeColor={colors.route} strokeWidth={5}
           />
         )}
         {dest && <Marker coordinate={{ latitude: dest.lat, longitude: dest.lng }} pinColor={colors.route} />}
@@ -197,7 +255,16 @@ export default function HomeScreen() {
         ))}
       </MapView>
 
-      <SearchBar pickupLabel={me ? 'Your location' : 'Finding you…'} busy={searching} onSubmit={searchDestination} />
+      <SearchBar
+        pickupLabel={me ? 'Your location' : 'Finding you…'}
+        busy={searching || suggesting}
+        suggestions={placeSuggestions}
+        searchError={searchError}
+        routeSummary={route ? `${route.distanceKm.toFixed(1)} km · ${route.durationMinutes ? `about ${route.durationMinutes} min` : 'ETA unavailable'}` : null}
+        onQueryChange={changeDestinationQuery}
+        onSubmit={setSearchQuery}
+        onSelect={selectDestination}
+      />
 
       {/* Emergency: 112 works from any SA mobile network */}
       <Pressable
@@ -253,7 +320,7 @@ export default function HomeScreen() {
 
           <Pressable
             onPress={request}
-            disabled={!selected || needsDest || requesting || !!activeRequestId}
+            disabled={!selected || needsDest || quoteRefreshing || requesting || !!activeRequestId}
             accessibilityRole="button"
             style={[s.cta, (!selected || needsDest || requesting || !!activeRequestId) && s.ctaOff, { marginBottom: bottom + 8 }]}
           >
@@ -261,6 +328,7 @@ export default function HomeScreen() {
               {activeRequestId ? 'Tow requested · tracking this driver'
                 : needsDest ? 'Enter a destination for your price'
                 : !selected ? 'Choose a truck'
+                : quoteRefreshing ? 'Updating route-based ZAR estimate…'
                 : requesting ? 'Sending request…'
                 : `Request Tow  ·  ${zarRange(selected.priceMin, selected.priceMax)}`}
             </Text>
