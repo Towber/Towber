@@ -34,3 +34,24 @@ export const darkMapStyle = [
   { featureType: 'poi', stylers: [{ visibility: 'off' }] },
   { featureType: 'transit', stylers: [{ visibility: 'off' }] },
 ];
+
+// Light, Bolt-style palette for the rider (client) screen: white surfaces, green actions.
+export const light = {
+  bg: '#FFFFFF',
+  surface: '#FFFFFF',
+  surfaceRaised: '#F3F4F6',
+  border: 'rgba(17,24,39,0.10)',
+  text: '#111827',
+  textMuted: '#6B7280',
+  go: '#2B8656',               // primary green buttons
+  goSoft: 'rgba(43,134,86,0.10)',
+  onGo: '#FFFFFF',
+  route: '#14452F',            // route line, pins, icons (dark green like Bolt)
+  routeSoft: 'rgba(20,69,47,0.08)',
+  warn: '#B45309',
+  danger: '#DC2626',
+  disabled: '#E5E7EB',
+  disabledText: '#9CA3AF',
+  header: '#000000',           // Uber-style top bar
+  onHeader: '#FFFFFF',
+};
