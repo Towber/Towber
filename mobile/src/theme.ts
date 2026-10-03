@@ -55,3 +55,24 @@ export const light = {
   header: '#000000',           // Uber-style top bar
   onHeader: '#FFFFFF',
 };
+
+// Clean, low-contrast light map for the partner screen: soft grey land,
+// white roads, pale blue water, and no POI/transit clutter behind the controls.
+export const lightMapStyle = [
+  { elementType: 'geometry', stylers: [{ color: '#F3F4F6' }] },
+  { elementType: 'labels.icon', stylers: [{ visibility: 'off' }] },
+  { elementType: 'labels.text.fill', stylers: [{ color: '#6B7280' }] },
+  { elementType: 'labels.text.stroke', stylers: [{ color: '#FFFFFF' }] },
+  { featureType: 'administrative', elementType: 'geometry', stylers: [{ visibility: 'off' }] },
+  { featureType: 'administrative.land_parcel', stylers: [{ visibility: 'off' }] },
+  { featureType: 'poi', stylers: [{ visibility: 'off' }] },
+  { featureType: 'transit', stylers: [{ visibility: 'off' }] },
+  { featureType: 'landscape.natural', elementType: 'geometry', stylers: [{ color: '#EEF1F0' }] },
+  { featureType: 'road', elementType: 'geometry', stylers: [{ color: '#FFFFFF' }] },
+  { featureType: 'road', elementType: 'geometry.stroke', stylers: [{ color: '#E5E7EB' }] },
+  { featureType: 'road.arterial', elementType: 'labels.text.fill', stylers: [{ color: '#9CA3AF' }] },
+  { featureType: 'road.highway', elementType: 'geometry', stylers: [{ color: '#FDE9B8' }] },
+  { featureType: 'road.highway', elementType: 'geometry.stroke', stylers: [{ color: '#F5D68A' }] },
+  { featureType: 'water', elementType: 'geometry', stylers: [{ color: '#D6E6F2' }] },
+  { featureType: 'water', elementType: 'labels.text.fill', stylers: [{ color: '#7C93A6' }] },
+];

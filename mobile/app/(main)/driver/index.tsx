@@ -1,12 +1,15 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { ActivityIndicator, Alert, Modal, Pressable, StyleSheet, Switch, Text, View } from 'react-native';
+import { ActivityIndicator, Alert, Modal, Pressable, StyleSheet, Text, View } from 'react-native';
 import MapView, { PROVIDER_GOOGLE } from 'react-native-maps';
+import { useRouter } from 'expo-router';
+import { StatusBar } from 'expo-status-bar';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 
 import { supabase, isTerminalRequestStatus, transitionRequest, type RequestAction, type RequestStatus } from '../../../src/api';
 import { startDriverLocationStream } from '../../../src/driverLocation';
-import { colors, darkMapStyle, font, radius, zar } from '../../../src/theme';
+import { PARTNER } from '../../../src/copy';
+import { font, light as L, lightMapStyle, zar } from '../../../src/theme';
 
 type BreakdownType = 'flatbed' | 'jumpstart' | 'lockout' | 'fuel' | 'tyre' | 'repair';
 type JobAlert = {
@@ -31,7 +34,7 @@ const text = (v: unknown) => (typeof v === 'string' && v.trim() ? v.trim() : nul
 const KNOWN_STATUSES: RequestStatus[] = ['pending', 'accepted', 'en_route', 'arrived', 'completed', 'cancelled', 'declined', 'expired'];
 const OPEN_STATUSES: RequestStatus[] = ['pending', 'accepted', 'en_route', 'arrived'];
 const STATUS_HEADLINE: Record<string, { eyebrow: string; title: string }> = {
-  pending: { eyebrow: 'NEW JOB ALERT', title: 'Tow request assigned' },
+  pending: { eyebrow: 'NEW JOB REQUEST', title: 'A request needs you' },
   accepted: { eyebrow: 'JOB ACCEPTED', title: 'Head to the pickup point' },
   en_route: { eyebrow: 'EN ROUTE', title: 'Driving to the pickup' },
   arrived: { eyebrow: 'ARRIVED', title: 'At the breakdown scene' },
@@ -65,8 +68,12 @@ function mapJob(row: Record<string, unknown>): JobAlert | null {
   };
 }
 
-export default function DriverRoute() {
-  const { top } = useSafeAreaInsets();
+export default function PartnerRoute() {
+  const { top, bottom } = useSafeAreaInsets();
+  const router = useRouter();
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [switching, setSwitching] = useState(false);
+  const [accountEmail, setAccountEmail] = useState<string | null>(null);
   const [vehicleId, setVehicleId] = useState<string | null>(null);
   const [assignmentLoading, setAssignmentLoading] = useState(true);
   const [assignmentError, setAssignmentError] = useState<string | null>(null);
@@ -84,7 +91,8 @@ export default function DriverRoute() {
       const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
       if (sessionError) throw sessionError;
       const user = sessionData.session?.user;
-      if (!user) throw new Error('No signed-in driver session was found.');
+      setAccountEmail(user?.email ?? null);
+      if (!user) throw new Error(`No signed-in ${PARTNER.singular} session was found.`);
       const { data, error } = await supabase
         .from('vehicle_driver_assignments')
         .select('vehicle_id')
@@ -123,7 +131,7 @@ export default function DriverRoute() {
       .catch((error: unknown) => {
         if (!active) return;
         setOnline(false);
-        setLocationError(error instanceof Error ? error.message : 'Could not start driver location sharing.');
+        setLocationError(error instanceof Error ? error.message : 'Could not start location sharing.');
       });
     return () => {
       active = false;
@@ -254,69 +262,149 @@ export default function DriverRoute() {
   const nextStep = jobAlert ? NEXT_STEP[jobAlert.status] : undefined;
   const offerPending = jobAlert?.status === 'pending';
 
+  // Sign out locally (this phone only) and send the person back to sign-in.
+  // The root layout also redirects on SIGNED_OUT; the explicit replace is a
+  // safety net so the screen can never be left blank.
   const switchAccount = async () => {
-    const { error } = await supabase.auth.signOut();
-    if (error) Alert.alert('Could not sign out', error.message);
+    if (switching) return;
+    setSwitching(true);
+    try {
+      const { error } = await supabase.auth.signOut({ scope: 'local' });
+      if (error) throw error;
+      setMenuOpen(false);
+      router.replace('/(auth)/sign-in');
+    } catch (error) {
+      Alert.alert('Could not switch account', error instanceof Error ? error.message : 'Please try again.');
+    } finally {
+      setSwitching(false);
+    }
   };
+
+  const statusLine = assignmentLoading
+    ? 'Checking your vehicle…'
+    : !vehicleId
+      ? assignmentError
+      : online
+        ? 'Sharing your location · waiting for jobs'
+        : `Vehicle ${vehicleId.slice(0, 8).toUpperCase()} · ready when you are`;
 
   return (
     <View style={styles.root}>
+      <StatusBar style="dark" />
       <MapView
         style={StyleSheet.absoluteFill}
         provider={PROVIDER_GOOGLE}
-        customMapStyle={darkMapStyle}
-        userInterfaceStyle="dark"
+        customMapStyle={lightMapStyle}
+        userInterfaceStyle="light"
         showsUserLocation={online}
         showsMyLocationButton={false}
+        showsCompass={false}
         toolbarEnabled={false}
         initialRegion={JHB}
       />
 
-      <View pointerEvents="box-none" style={[styles.overlay, { paddingTop: top + 12 }]}>
-        <View style={styles.statusCard}>
-          <View style={styles.statusCopy}>
-            <Text style={styles.eyebrow}>DRIVER MODE</Text>
-            <Text style={styles.title}>{online ? 'You’re online' : 'You’re offline'}</Text>
-            <Text style={styles.subtitle}>
-              {assignmentLoading ? 'Checking your vehicle…' : vehicleId ? `Vehicle ${vehicleId.slice(0, 8).toUpperCase()}` : assignmentError}
-            </Text>
-          </View>
-          {assignmentLoading ? <ActivityIndicator color={colors.go} /> : (
-            <View style={styles.switchGroup}>
-              <Text style={[styles.switchLabel, online && { color: colors.go }]}>{online ? 'Online' : 'Offline'}</Text>
-              <Switch
-                value={online}
-                onValueChange={changeOnline}
-                disabled={!vehicleId}
-                trackColor={{ false: colors.surfaceRaised, true: 'rgba(0,230,118,0.45)' }}
-                thumbColor={online ? colors.go : colors.textMuted}
-                accessibilityLabel={`Driver status ${online ? 'online' : 'offline'}`}
-              />
-            </View>
-          )}
+      {/* Top bar: status chip + account menu */}
+      <View pointerEvents="box-none" style={[styles.topBar, { paddingTop: top + 10 }]}>
+        <View style={styles.chip}>
+          <View style={[styles.dot, online ? styles.dotOn : styles.dotOff]} />
+          <Text style={styles.chipText}>{online ? 'Online' : 'Offline'}</Text>
         </View>
-        <Pressable accessibilityRole="button" accessibilityLabel="Sign out and switch account" onPress={() => { void switchAccount(); }} style={styles.signOutButton}>
-          <Ionicons name="log-out-outline" size={15} color={colors.textMuted} />
-          <Text style={styles.signOutText}>Switch account</Text>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Account menu"
+          onPress={() => setMenuOpen(true)}
+          style={({ pressed }) => [styles.roundButton, pressed && styles.pressed]}
+        >
+          <Ionicons name="person-outline" size={20} color={L.text} />
         </Pressable>
-        {locationError && <View style={styles.errorCard}><Ionicons name="warning-outline" size={17} color={colors.warn} /><Text style={styles.errorText}>{locationError}</Text></View>}
-        {online && <View style={styles.onlinePill}><View style={styles.onlineDot} /><Text style={styles.onlinePillText}>Sharing location · waiting for jobs</Text></View>}
-        {!vehicleId && !assignmentLoading && (
-          <Pressable accessibilityRole="button" onPress={() => void loadAssignment()} style={styles.retryButton}>
-            <Text style={styles.retryText}>Refresh assignment</Text>
-          </Pressable>
-        )}
       </View>
 
-      <Modal
-        visible={!!jobAlert}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setJobAlert(null)}
-      >
+      {locationError ? (
+        <View pointerEvents="none" style={[styles.errorCard, { top: top + 66 }]}>
+          <Ionicons name="warning-outline" size={18} color={L.warn} />
+          <Text style={styles.errorText}>{locationError}</Text>
+        </View>
+      ) : null}
+
+      {/* Bottom control sheet */}
+      <View style={[styles.sheet, { paddingBottom: Math.max(bottom, 12) + 14 }]}>
+        <View style={styles.grabber} />
+        <Text style={styles.eyebrow}>{PARTNER.mode}</Text>
+        <Text style={styles.title}>{online ? 'You’re online' : 'You’re offline'}</Text>
+        <View style={styles.statusRow}>
+          {assignmentLoading ? <ActivityIndicator size="small" color={L.go} /> : online ? <View style={[styles.dot, styles.dotOn]} /> : null}
+          <Text style={styles.subtitle}>{statusLine}</Text>
+        </View>
+
+        {online ? (
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Go offline"
+            onPress={() => changeOnline(false)}
+            style={({ pressed }) => [styles.offlineButton, pressed && styles.pressed]}
+          >
+            <Ionicons name="power" size={18} color="#FFFFFF" />
+            <Text style={styles.offlineButtonText}>Go offline</Text>
+          </Pressable>
+        ) : (
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Go online"
+            disabled={!vehicleId || assignmentLoading}
+            onPress={() => changeOnline(true)}
+            style={({ pressed }) => [styles.onlineButton, pressed && styles.pressed, (!vehicleId || assignmentLoading) && styles.buttonOff]}
+          >
+            <Ionicons name="power" size={18} color={L.onGo} />
+            <Text style={styles.onlineButtonText}>Go online</Text>
+          </Pressable>
+        )}
+
+        {!vehicleId && !assignmentLoading ? (
+          <Pressable accessibilityRole="button" onPress={() => void loadAssignment()} style={({ pressed }) => [styles.linkButton, pressed && styles.pressed]}>
+            <Ionicons name="refresh" size={15} color={L.route} />
+            <Text style={styles.linkText}>Refresh assignment</Text>
+          </Pressable>
+        ) : null}
+      </View>
+
+      {/* Account menu */}
+      <Modal visible={menuOpen} transparent animationType="fade" onRequestClose={() => setMenuOpen(false)}>
+        <Pressable style={styles.menuBackdrop} onPress={() => setMenuOpen(false)}>
+          <Pressable style={[styles.menuSheet, { paddingBottom: Math.max(bottom, 12) + 16 }]} onPress={() => undefined}>
+            <View style={styles.grabber} />
+            <View style={styles.accountRow}>
+              <View style={styles.avatar}><Ionicons name="person" size={20} color={L.route} /></View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.accountName}>{PARTNER.Singular} account</Text>
+                <Text style={styles.accountEmail} numberOfLines={1}>{accountEmail ?? 'Signed in'}</Text>
+              </View>
+            </View>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Switch account"
+              disabled={switching}
+              onPress={() => { void switchAccount(); }}
+              style={({ pressed }) => [styles.menuAction, pressed && styles.pressed, switching && styles.buttonOff]}
+            >
+              {switching ? <ActivityIndicator color={L.text} /> : <Ionicons name="swap-horizontal" size={20} color={L.text} />}
+              <View style={{ flex: 1 }}>
+                <Text style={styles.menuActionTitle}>Switch account</Text>
+                <Text style={styles.menuActionSub}>Sign out and use a different email</Text>
+              </View>
+              <Ionicons name="chevron-forward" size={18} color={L.disabledText} />
+            </Pressable>
+            <Pressable accessibilityRole="button" onPress={() => setMenuOpen(false)} style={({ pressed }) => [styles.closeButton, pressed && styles.pressed]}>
+              <Text style={styles.closeText}>Close</Text>
+            </Pressable>
+          </Pressable>
+        </Pressable>
+      </Modal>
+
+      {/* Job offer / active job */}
+      <Modal visible={!!jobAlert} transparent animationType="fade" onRequestClose={() => setJobAlert(null)}>
         <View style={styles.modalBackdrop}>
           <View style={styles.alertCard}>
-            <View style={styles.alertIcon}><Ionicons name={offerPending ? 'notifications' : 'navigate'} size={23} color={colors.bg} /></View>
+            <View style={styles.alertIcon}><Ionicons name={offerPending ? 'notifications' : 'navigate'} size={22} color={L.onGo} /></View>
             <Text style={styles.alertEyebrow}>{headline.eyebrow}</Text>
             <Text style={styles.alertTitle}>{headline.title}</Text>
             {jobAlert && (
@@ -343,21 +431,21 @@ export default function DriverRoute() {
               <View style={styles.actionRow}>
                 <Pressable
                   accessibilityRole="button"
-                  accessibilityLabel="Accept tow request"
-                  disabled={acting || offerSecondsLeft <= 0}
-                  onPress={() => { void runAction('accept'); }}
-                  style={[styles.acceptButton, (acting || offerSecondsLeft <= 0) && styles.buttonOff]}
+                  accessibilityLabel="Decline job request"
+                  disabled={acting}
+                  onPress={() => { void runAction('decline'); }}
+                  style={({ pressed }) => [styles.declineButton, pressed && styles.pressed, acting && styles.buttonOff]}
                 >
-                  {acting ? <ActivityIndicator color={colors.bg} /> : <Text style={styles.acceptText}>Accept job</Text>}
+                  <Text style={styles.declineText}>Decline</Text>
                 </Pressable>
                 <Pressable
                   accessibilityRole="button"
-                  accessibilityLabel="Decline tow request"
-                  disabled={acting}
-                  onPress={() => { void runAction('decline'); }}
-                  style={[styles.declineButton, acting && styles.buttonOff]}
+                  accessibilityLabel="Accept job request"
+                  disabled={acting || offerSecondsLeft <= 0}
+                  onPress={() => { void runAction('accept'); }}
+                  style={({ pressed }) => [styles.acceptButton, pressed && styles.pressed, (acting || offerSecondsLeft <= 0) && styles.buttonOff]}
                 >
-                  <Text style={styles.declineText}>Decline</Text>
+                  {acting ? <ActivityIndicator color={L.onGo} /> : <Text style={styles.acceptText}>Accept job</Text>}
                 </Pressable>
               </View>
             ) : nextStep ? (
@@ -365,9 +453,9 @@ export default function DriverRoute() {
                 accessibilityRole="button"
                 disabled={acting}
                 onPress={() => { void runAction(nextStep.action); }}
-                style={[styles.ackButton, acting && styles.buttonOff]}
+                style={({ pressed }) => [styles.ackButton, pressed && styles.pressed, acting && styles.buttonOff]}
               >
-                {acting ? <ActivityIndicator color={colors.bg} /> : <Text style={styles.ackText}>{nextStep.label}</Text>}
+                {acting ? <ActivityIndicator color={L.onGo} /> : <Text style={styles.ackText}>{nextStep.label}</Text>}
               </Pressable>
             ) : null}
           </View>
@@ -377,42 +465,64 @@ export default function DriverRoute() {
   );
 }
 
+const shadow = { shadowColor: '#000000', shadowOpacity: 0.14, shadowRadius: 12, shadowOffset: { width: 0, height: 4 }, elevation: 6 } as const;
+
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: colors.bg },
-  overlay: { ...StyleSheet.absoluteFill, paddingHorizontal: 16, gap: 10 },
-  statusCard: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 16, padding: 18, borderRadius: radius.card, backgroundColor: 'rgba(15,23,42,0.94)', borderWidth: 1, borderColor: colors.border },
-  signOutButton: { alignSelf: 'flex-end', flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 11, paddingVertical: 8, borderRadius: 12, backgroundColor: 'rgba(15,23,42,0.94)' },
-  signOutText: { color: colors.textMuted, fontFamily: font.semibold, fontSize: 12 },
-  statusCopy: { flex: 1, gap: 4 },
-  eyebrow: { color: colors.route, fontFamily: font.bold, fontSize: 10, letterSpacing: 1.4 },
-  title: { color: colors.text, fontFamily: font.bold, fontSize: 19 },
-  subtitle: { color: colors.textMuted, fontFamily: font.medium, fontSize: 12, lineHeight: 17 },
-  switchGroup: { alignItems: 'center', gap: 3 },
-  switchLabel: { color: colors.textMuted, fontFamily: font.semibold, fontSize: 12 },
-  errorCard: { flexDirection: 'row', alignItems: 'center', gap: 8, padding: 12, borderRadius: 14, backgroundColor: 'rgba(15,23,42,0.92)' },
-  errorText: { flex: 1, color: colors.warn, fontFamily: font.medium, fontSize: 12, lineHeight: 17 },
-  onlinePill: { alignSelf: 'flex-start', flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 13, paddingVertical: 9, borderRadius: radius.pill, backgroundColor: 'rgba(15,23,42,0.94)' },
-  onlineDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: colors.go },
-  onlinePillText: { color: colors.text, fontFamily: font.medium, fontSize: 12 },
-  retryButton: { alignSelf: 'flex-start', paddingHorizontal: 14, paddingVertical: 10, borderRadius: 12, backgroundColor: colors.surfaceRaised },
-  retryText: { color: colors.text, fontFamily: font.semibold, fontSize: 12 },
-  modalBackdrop: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 24, backgroundColor: 'rgba(2,6,23,0.75)' },
-  alertCard: { width: '100%', padding: 22, borderRadius: 24, backgroundColor: colors.surface, borderColor: colors.border, borderWidth: 1, gap: 12 },
-  alertIcon: { width: 46, height: 46, borderRadius: 16, backgroundColor: colors.go, alignItems: 'center', justifyContent: 'center', marginBottom: 2 },
-  alertEyebrow: { color: colors.go, fontFamily: font.bold, fontSize: 11, letterSpacing: 1.4 },
-  alertTitle: { color: colors.text, fontFamily: font.bold, fontSize: 21, marginBottom: 4 },
-  jobRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12, paddingVertical: 9, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border },
-  jobLabel: { color: colors.textMuted, fontFamily: font.medium, fontSize: 13 },
-  jobValue: { color: colors.text, fontFamily: font.semibold, fontSize: 14 },
-  jobRef: { color: colors.textMuted, fontFamily: font.medium, fontSize: 11, marginTop: 3 },
-  offerTimer: { color: colors.warn, fontFamily: font.semibold, fontSize: 12 },
-  actionError: { color: colors.warn, fontFamily: font.medium, fontSize: 12, lineHeight: 17 },
-  actionRow: { flexDirection: 'row', gap: 10, marginTop: 6 },
-  acceptButton: { flex: 1, height: 50, borderRadius: 15, backgroundColor: colors.go, alignItems: 'center', justifyContent: 'center' },
-  acceptText: { color: colors.bg, fontFamily: font.bold, fontSize: 15 },
-  declineButton: { flex: 1, height: 50, borderRadius: 15, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surfaceRaised, alignItems: 'center', justifyContent: 'center' },
-  declineText: { color: colors.text, fontFamily: font.semibold, fontSize: 15 },
-  buttonOff: { opacity: 0.55 },
-  ackButton: { height: 50, borderRadius: 15, backgroundColor: colors.go, alignItems: 'center', justifyContent: 'center', marginTop: 6 },
-  ackText: { color: colors.bg, fontFamily: font.bold, fontSize: 15 },
+  root: { flex: 1, backgroundColor: L.bg },
+  pressed: { opacity: 0.85, transform: [{ scale: 0.98 }] },
+  buttonOff: { opacity: 0.5 },
+
+  topBar: { position: 'absolute', top: 0, left: 0, right: 0, paddingHorizontal: 16, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  chip: { flexDirection: 'row', alignItems: 'center', gap: 8, height: 44, paddingHorizontal: 16, borderRadius: 999, backgroundColor: L.surface, ...shadow },
+  chipText: { color: L.text, fontFamily: font.semibold, fontSize: 14 },
+  dot: { width: 9, height: 9, borderRadius: 5 },
+  dotOn: { backgroundColor: '#22C55E' },
+  dotOff: { backgroundColor: L.disabledText },
+  roundButton: { width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center', backgroundColor: L.surface, ...shadow },
+  errorCard: { position: 'absolute', left: 16, right: 16, flexDirection: 'row', alignItems: 'center', gap: 8, padding: 12, borderRadius: 16, backgroundColor: L.surface, ...shadow },
+  errorText: { flex: 1, color: L.warn, fontFamily: font.medium, fontSize: 12, lineHeight: 17 },
+
+  sheet: { position: 'absolute', left: 0, right: 0, bottom: 0, paddingHorizontal: 20, paddingTop: 10, borderTopLeftRadius: 28, borderTopRightRadius: 28, backgroundColor: L.surface, gap: 6, shadowColor: '#000000', shadowOpacity: 0.16, shadowRadius: 16, shadowOffset: { width: 0, height: -4 }, elevation: 16 },
+  grabber: { alignSelf: 'center', width: 40, height: 4, borderRadius: 2, backgroundColor: L.disabled, marginBottom: 10 },
+  eyebrow: { color: L.go, fontFamily: font.bold, fontSize: 11, letterSpacing: 1.4 },
+  title: { color: L.text, fontFamily: font.bold, fontSize: 26, letterSpacing: -0.6 },
+  statusRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 12 },
+  subtitle: { flex: 1, color: L.textMuted, fontFamily: font.medium, fontSize: 13, lineHeight: 18 },
+  onlineButton: { height: 56, borderRadius: 999, backgroundColor: L.go, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10 },
+  onlineButtonText: { color: L.onGo, fontFamily: font.bold, fontSize: 16 },
+  offlineButton: { height: 56, borderRadius: 999, backgroundColor: '#111827', flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10 },
+  offlineButtonText: { color: '#FFFFFF', fontFamily: font.bold, fontSize: 16 },
+  linkButton: { alignSelf: 'center', flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 10, paddingHorizontal: 14 },
+  linkText: { color: L.route, fontFamily: font.semibold, fontSize: 13 },
+
+  menuBackdrop: { flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(17,24,39,0.45)' },
+  menuSheet: { paddingHorizontal: 20, paddingTop: 10, borderTopLeftRadius: 28, borderTopRightRadius: 28, backgroundColor: L.surface, gap: 12 },
+  accountRow: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 4 },
+  avatar: { width: 44, height: 44, borderRadius: 22, backgroundColor: L.routeSoft, alignItems: 'center', justifyContent: 'center' },
+  accountName: { color: L.text, fontFamily: font.bold, fontSize: 16 },
+  accountEmail: { color: L.textMuted, fontFamily: font.medium, fontSize: 13, marginTop: 1 },
+  menuAction: { flexDirection: 'row', alignItems: 'center', gap: 14, minHeight: 64, paddingHorizontal: 16, borderRadius: 18, backgroundColor: L.surfaceRaised },
+  menuActionTitle: { color: L.text, fontFamily: font.semibold, fontSize: 15 },
+  menuActionSub: { color: L.textMuted, fontFamily: font.regular, fontSize: 12, marginTop: 1 },
+  closeButton: { height: 52, borderRadius: 999, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: L.border },
+  closeText: { color: L.text, fontFamily: font.semibold, fontSize: 15 },
+
+  modalBackdrop: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 24, backgroundColor: 'rgba(17,24,39,0.55)' },
+  alertCard: { width: '100%', padding: 22, borderRadius: 28, backgroundColor: L.surface, gap: 10 },
+  alertIcon: { width: 46, height: 46, borderRadius: 23, backgroundColor: L.go, alignItems: 'center', justifyContent: 'center', marginBottom: 2 },
+  alertEyebrow: { color: L.go, fontFamily: font.bold, fontSize: 11, letterSpacing: 1.4 },
+  alertTitle: { color: L.text, fontFamily: font.bold, fontSize: 22, letterSpacing: -0.4, marginBottom: 4 },
+  jobRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12, paddingVertical: 10, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: L.border },
+  jobLabel: { color: L.textMuted, fontFamily: font.medium, fontSize: 13 },
+  jobValue: { flexShrink: 1, color: L.text, fontFamily: font.semibold, fontSize: 14, textAlign: 'right' },
+  jobRef: { color: L.textMuted, fontFamily: font.medium, fontSize: 11, marginTop: 3 },
+  offerTimer: { color: L.warn, fontFamily: font.semibold, fontSize: 12 },
+  actionError: { color: L.danger, fontFamily: font.medium, fontSize: 12, lineHeight: 17 },
+  actionRow: { flexDirection: 'row', gap: 10, marginTop: 8 },
+  acceptButton: { flex: 1.4, height: 54, borderRadius: 999, backgroundColor: L.go, alignItems: 'center', justifyContent: 'center' },
+  acceptText: { color: L.onGo, fontFamily: font.bold, fontSize: 15 },
+  declineButton: { flex: 1, height: 54, borderRadius: 999, borderWidth: 1, borderColor: L.border, backgroundColor: L.surface, alignItems: 'center', justifyContent: 'center' },
+  declineText: { color: L.text, fontFamily: font.semibold, fontSize: 15 },
+  ackButton: { height: 54, borderRadius: 999, backgroundColor: L.go, alignItems: 'center', justifyContent: 'center', marginTop: 8 },
+  ackText: { color: L.onGo, fontFamily: font.bold, fontSize: 15 },
 });
