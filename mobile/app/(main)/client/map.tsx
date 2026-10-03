@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Alert, ActivityIndicator, FlatList, Linking, Modal, Pressable, StyleSheet, Switch, Text, View } from 'react-native';
+import { Alert, ActivityIndicator, FlatList, Linking, Modal, Pressable, StyleSheet, Switch, Text, TextInput, View } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import MapView, { Marker, Polyline, PROVIDER_GOOGLE } from 'react-native-maps';
 import { useRouter } from 'expo-router';
@@ -17,6 +17,7 @@ import { TopBar, TOPBAR_HEIGHT } from '../../../src/components/TopBar';
 import { getDraft, serviceIcon, serviceLabel } from '../../../src/requestDraft';
 import { TruckCard, TruckCardSkeleton, CARD_WIDTH } from '../../../src/components/TruckCard';
 import { TruckMarker } from '../../../src/components/TruckMarker';
+import { loadMyRating, submitRequestRating } from '../../../src/chat';
 
 // Johannesburg CBD fallback if location permission is denied
 const FALLBACK: LatLng = { lat: -26.2041, lng: 28.0473 };
@@ -92,6 +93,11 @@ export default function HomeScreen() {
   const breakdownType: BreakdownType = draft?.breakdownType ?? 'flatbed';
   const [drawerVisible, setDrawerVisible] = useState(false);
   const [darkMapEnabled, setDarkMapEnabled] = useState(false);
+  const [ratingVisible, setRatingVisible] = useState(false);
+  const [ratingValue, setRatingValue] = useState(0);
+  const [ratingComment, setRatingComment] = useState('');
+  const [ratingSaved, setRatingSaved] = useState(false);
+  const [ratingSaving, setRatingSaving] = useState(false);
 
   const isTow = breakdownType === 'flatbed';
   const tripKm = useMemo(
@@ -235,6 +241,16 @@ export default function HomeScreen() {
     return () => { stopped = true; clearInterval(timer); };
   }, [activeRequestId, requestStatus]);
 
+  useEffect(() => {
+    if (requestStatus !== 'completed' || !activeRequestId) return;
+    loadMyRating(activeRequestId).then((existing) => {
+      if (!existing) return;
+      setRatingValue(existing.rating);
+      setRatingComment(existing.comment ?? '');
+      setRatingSaved(true);
+    }).catch(() => { /* Rating is optional and should not block the completed view. */ });
+  }, [activeRequestId, requestStatus]);
+
   // Offer countdown while the request is still pending.
   useEffect(() => {
     if (!activeRequestId || requestStatus !== 'pending') return;
@@ -363,11 +379,27 @@ export default function HomeScreen() {
     setRequestStatus(null);
     setRequestExpiresAt(null);
     setRequestCompany(null);
+    setRatingVisible(false);
+    setRatingValue(0);
+    setRatingComment('');
+    setRatingSaved(false);
   };
 
   const callEmergencyServices = () => {
     setDrawerVisible(false);
     void Linking.openURL('tel:112').catch(() => Alert.alert('Unable to place call', 'Call emergency services at 112.'));
+  };
+
+  const saveRating = async () => {
+    if (!activeRequestId || ratingValue < 1 || ratingSaving || ratingSaved) return;
+    setRatingSaving(true);
+    try {
+      await submitRequestRating(activeRequestId, ratingValue, ratingComment);
+      setRatingSaved(true);
+      setRatingVisible(false);
+    } catch (error) {
+      Alert.alert('Could not save rating', error instanceof Error ? error.message : 'Please try again.');
+    } finally { setRatingSaving(false); }
   };
 
   const expanded = !isTow || !!dest || !!activeRequestId;
@@ -548,20 +580,17 @@ export default function HomeScreen() {
                 </Text>
               )}
               {activeStatus ? (
-                <Pressable
-                  accessibilityRole="button"
-                  disabled={cancelling}
-                  onPress={cancelActiveRequest}
-                  style={[s.cancelButton, cancelling && s.cancelButtonOff]}
-                >
-                  {cancelling
-                    ? <ActivityIndicator size="small" color={L.danger} />
-                    : <Text style={s.cancelText}>Cancel request</Text>}
-                </Pressable>
+                <View style={s.statusActions}>
+                  {requestStatus !== 'pending' ? <Pressable accessibilityRole="button" onPress={() => router.push({ pathname: '/(main)/chat/[requestId]', params: { requestId: activeRequestId } })} style={s.chatAction}><Ionicons name="chatbubble-ellipses-outline" size={18} color={L.text} /><Text style={s.chatActionText}>Chat with partner</Text></Pressable> : null}
+                  <Pressable accessibilityRole="button" disabled={cancelling} onPress={cancelActiveRequest} style={[s.cancelButton, cancelling && s.cancelButtonOff]}>
+                    {cancelling ? <ActivityIndicator size="small" color={L.danger} /> : <Text style={s.cancelText}>Cancel request</Text>}
+                  </Pressable>
+                </View>
               ) : (
-                <Pressable accessibilityRole="button" onPress={resetRequest} style={[s.cta, { marginHorizontal: 0 }]}>
-                  <Text style={s.ctaText}>{requestStatus === 'completed' ? 'Done' : 'Request help again'}</Text>
-                </Pressable>
+                <View style={{ gap: 8 }}>
+                  {requestStatus === 'completed' && !ratingSaved ? <Pressable accessibilityRole="button" onPress={() => setRatingVisible(true)} style={[s.cta, { marginHorizontal: 0 }]}><Text style={s.ctaText}>Rate your partner</Text></Pressable> : null}
+                  <Pressable accessibilityRole="button" onPress={resetRequest} style={[s.cta, { marginHorizontal: 0 }]}><Text style={s.ctaText}>{requestStatus === 'completed' ? (ratingSaved ? 'Done' : 'Skip for now') : 'Request help again'}</Text></Pressable>
+                </View>
               )}
             </View>
           ) : (
@@ -582,6 +611,20 @@ export default function HomeScreen() {
           )}
         </BottomSheetView>
       </BottomSheet>
+
+      <Modal visible={ratingVisible} transparent animationType="fade" onRequestClose={() => setRatingVisible(false)}>
+        <View style={s.ratingBackdrop}>
+          <View style={s.ratingCard}>
+            <Text style={s.ratingEyebrow}>JOB COMPLETE</Text>
+            <Text style={s.ratingTitle}>How was your partner?</Text>
+            <Text style={s.ratingBody}>Your feedback helps keep roadside help dependable for every guest.</Text>
+            <View style={s.stars}>{[1, 2, 3, 4, 5].map((value) => <Pressable key={value} accessibilityRole="button" accessibilityLabel={`${value} star${value === 1 ? '' : 's'}`} onPress={() => setRatingValue(value)}><Ionicons name={value <= ratingValue ? 'star' : 'star-outline'} size={34} color={L.go} /></Pressable>)}</View>
+            <TextInput accessibilityLabel="Rating comment" placeholder="Add a note (optional)" placeholderTextColor={L.disabledText} value={ratingComment} onChangeText={setRatingComment} style={s.ratingInput} multiline maxLength={500} />
+            <Pressable accessibilityRole="button" disabled={!ratingValue || ratingSaving} onPress={() => { void saveRating(); }} style={[s.ratingSubmit, (!ratingValue || ratingSaving) && s.ctaOff]}>{ratingSaving ? <ActivityIndicator color={L.onGo} /> : <Text style={s.ctaText}>Submit rating</Text>}</Pressable>
+            <Pressable accessibilityRole="button" onPress={() => setRatingVisible(false)} style={s.ratingCancel}><Text style={s.ratingCancelText}>Not now</Text></Pressable>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -607,6 +650,9 @@ const s = StyleSheet.create({
   chipText: { color: L.textMuted, fontFamily: font.semibold, fontSize: 11 },
   chipTextOn: { color: L.go },
   statusTimer: { color: L.warn, fontFamily: font.medium, fontSize: 12 },
+  statusActions: { gap: 8 },
+  chatAction: { height: 46, borderRadius: 14, borderWidth: 1, borderColor: L.border, backgroundColor: '#FFFFFF', flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 },
+  chatActionText: { color: L.text, fontFamily: font.semibold, fontSize: 13 },
   cancelButton: { height: 46, borderRadius: 14, borderWidth: 1, borderColor: 'rgba(220,38,38,0.5)', backgroundColor: '#FFFFFF', alignItems: 'center', justifyContent: 'center' },
   cancelButtonOff: { opacity: 0.6 },
   cancelText: { color: L.danger, fontFamily: font.semibold, fontSize: 14 },
@@ -616,6 +662,16 @@ const s = StyleSheet.create({
   ctaOff: { backgroundColor: L.disabled },
   ctaText: { color: L.onGo, fontFamily: font.bold, fontSize: 16 },
   ctaTextOff: { color: L.disabledText },
+  ratingBackdrop: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 24, backgroundColor: 'rgba(17,24,39,0.55)' },
+  ratingCard: { width: '100%', padding: 22, borderRadius: 26, backgroundColor: L.surface, gap: 10 },
+  ratingEyebrow: { color: L.go, fontFamily: font.bold, fontSize: 11, letterSpacing: 1.3 },
+  ratingTitle: { color: L.text, fontFamily: font.bold, fontSize: 23, letterSpacing: -0.4 },
+  ratingBody: { color: L.textMuted, fontFamily: font.medium, fontSize: 13, lineHeight: 18 },
+  stars: { flexDirection: 'row', justifyContent: 'center', gap: 6, paddingVertical: 8 },
+  ratingInput: { minHeight: 80, borderRadius: 14, backgroundColor: L.surfaceRaised, padding: 12, color: L.text, fontFamily: font.medium, fontSize: 13, textAlignVertical: 'top' },
+  ratingSubmit: { height: 52, borderRadius: 999, backgroundColor: L.go, alignItems: 'center', justifyContent: 'center' },
+  ratingCancel: { height: 42, alignItems: 'center', justifyContent: 'center' },
+  ratingCancelText: { color: L.textMuted, fontFamily: font.semibold, fontSize: 13 },
   // Uber-style full-screen menu
   menuRoot: { flex: 1, backgroundColor: '#FFFFFF' },
   menuBar: { backgroundColor: L.header, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 20 },

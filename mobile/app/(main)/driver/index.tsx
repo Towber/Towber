@@ -1,6 +1,6 @@
-import React, { useCallback, useEffect, useState } from 'react';
-import { ActivityIndicator, Alert, Modal, Pressable, StyleSheet, Text, View } from 'react-native';
-import MapView, { PROVIDER_GOOGLE } from 'react-native-maps';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { ActivityIndicator, Alert, Linking, Modal, Pressable, StyleSheet, Text, View } from 'react-native';
+import MapView, { Marker, Polyline, PROVIDER_GOOGLE } from 'react-native-maps';
 import { useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -23,6 +23,7 @@ type JobAlert = {
   registration: string | null;
   passengers: number | null;
   contact: string | null;
+  pickup: { latitude: number; longitude: number } | null;
 };
 
 const JHB = { latitude: -26.2041, longitude: 28.0473, latitudeDelta: 0.08, longitudeDelta: 0.08 };
@@ -31,6 +32,19 @@ const SERVICE_LABEL: Record<BreakdownType, string> = {
 };
 const BREAKDOWN_TYPES: BreakdownType[] = ['flatbed', 'jumpstart', 'lockout', 'fuel', 'tyre', 'repair'];
 const text = (v: unknown) => (typeof v === 'string' && v.trim() ? v.trim() : null);
+function pickupCoordinate(value: unknown) {
+  if (value && typeof value === 'object' && 'coordinates' in value) {
+    const coordinates = (value as { coordinates?: unknown }).coordinates;
+    if (Array.isArray(coordinates) && Number.isFinite(Number(coordinates[0])) && Number.isFinite(Number(coordinates[1]))) {
+      return { latitude: Number(coordinates[1]), longitude: Number(coordinates[0]) };
+    }
+  }
+  if (typeof value === 'string') {
+    const match = value.match(/POINT\s*\(\s*(-?[\d.]+)\s+(-?[\d.]+)\s*\)/i);
+    if (match) return { latitude: Number(match[2]), longitude: Number(match[1]) };
+  }
+  return null;
+}
 const KNOWN_STATUSES: RequestStatus[] = ['pending', 'accepted', 'en_route', 'arrived', 'completed', 'cancelled', 'declined', 'expired'];
 const OPEN_STATUSES: RequestStatus[] = ['pending', 'accepted', 'en_route', 'arrived'];
 const STATUS_HEADLINE: Record<string, { eyebrow: string; title: string }> = {
@@ -65,6 +79,7 @@ function mapJob(row: Record<string, unknown>): JobAlert | null {
     registration: text(row.vehicle_registration),
     passengers: typeof row.passengers === 'number' ? row.passengers : null,
     contact,
+    pickup: pickupCoordinate(row.pickup_location),
   };
 }
 
@@ -80,9 +95,11 @@ export default function PartnerRoute() {
   const [online, setOnline] = useState(false);
   const [locationError, setLocationError] = useState<string | null>(null);
   const [jobAlert, setJobAlert] = useState<JobAlert | null>(null);
+  const [acceptedJobCollapsed, setAcceptedJobCollapsed] = useState(false);
   const [acting, setActing] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
   const [clockMs, setClockMs] = useState(() => Date.now());
+  const map = useRef<MapView>(null);
 
   const loadAssignment = useCallback(async () => {
     setAssignmentLoading(true);
@@ -140,12 +157,18 @@ export default function PartnerRoute() {
   }, [online, vehicleId]);
 
   useEffect(() => {
+    if (!jobAlert?.pickup) return;
+    map.current?.animateToRegion({ ...jobAlert.pickup, latitudeDelta: 0.035, longitudeDelta: 0.035 }, 700);
+  }, [jobAlert?.pickup]);
+
+  useEffect(() => {
     if (!online || !vehicleId) return;
     let active = true;
     let channel: ReturnType<typeof supabase.channel> | undefined;
     const receive = (row: Record<string, unknown>) => {
       const alert = mapJob(row);
       if (!active || !alert) return;
+      if (alert.status === 'pending') setAcceptedJobCollapsed(false);
       if (isTerminalRequestStatus(alert.status)) {
         // Closed elsewhere (motorist cancelled, dispatch expired, …).
         setJobAlert((previous) => (previous && previous.id === alert.id ? null : previous));
@@ -164,7 +187,7 @@ export default function PartnerRoute() {
     // this driver's assigned vehicle.
     void supabase
       .from('tow_requests')
-      .select('id, status, expires_at, breakdown_type, estimated_distance_km, estimated_price_min, service_for, contact_name, contact_phone, vehicle_make_model, vehicle_color, vehicle_registration, passengers')
+      .select('id, status, expires_at, breakdown_type, estimated_distance_km, estimated_price_min, service_for, contact_name, contact_phone, vehicle_make_model, vehicle_color, vehicle_registration, passengers, pickup_location')
       .eq('assigned_vehicle_id', vehicleId)
       .in('status', OPEN_STATUSES)
       .order('created_at', { ascending: false })
@@ -245,6 +268,7 @@ export default function PartnerRoute() {
         return;
       }
       setJobAlert({ ...jobAlert, status: updated.status, expiresAt: updated.expires_at ?? null });
+      if (action === 'accept') setAcceptedJobCollapsed(true);
     } catch (error) {
       const status = (error as { status?: number }).status;
       if (status === 403 || status === 404 || status === 409) {
@@ -292,6 +316,7 @@ export default function PartnerRoute() {
     <View style={styles.root}>
       <StatusBar style="dark" />
       <MapView
+        ref={map}
         style={StyleSheet.absoluteFill}
         provider={PROVIDER_GOOGLE}
         customMapStyle={lightMapStyle}
@@ -301,7 +326,10 @@ export default function PartnerRoute() {
         showsCompass={false}
         toolbarEnabled={false}
         initialRegion={JHB}
-      />
+      >
+        {jobAlert?.pickup ? <Marker coordinate={jobAlert.pickup} pinColor={L.route} title="Client pickup" /> : null}
+        {jobAlert?.pickup ? <Polyline coordinates={[{ latitude: JHB.latitude, longitude: JHB.longitude }, jobAlert.pickup]} strokeColor={L.route} strokeWidth={4} /> : null}
+      </MapView>
 
       {/* Top bar: status chip + account menu */}
       <View pointerEvents="box-none" style={[styles.topBar, { paddingTop: top + 10 }]}>
@@ -323,6 +351,19 @@ export default function PartnerRoute() {
         <View pointerEvents="none" style={[styles.errorCard, { top: top + 66 }]}>
           <Ionicons name="warning-outline" size={18} color={L.warn} />
           <Text style={styles.errorText}>{locationError}</Text>
+        </View>
+      ) : null}
+
+      {jobAlert && !offerPending && acceptedJobCollapsed ? (
+        <View style={[styles.acceptedPill, { bottom: Math.max(bottom, 12) + 18 }]}>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.acceptedPillEyebrow}>ACTIVE JOB</Text>
+            <Text style={styles.acceptedPillTitle}>{headline.title}</Text>
+          </View>
+          <Pressable accessibilityRole="button" accessibilityLabel="Show active job details" onPress={() => setAcceptedJobCollapsed(false)} style={styles.showJobButton}>
+            <Ionicons name="chevron-up" size={18} color={L.onGo} />
+            <Text style={styles.showJobText}>Details</Text>
+          </Pressable>
         </View>
       ) : null}
 
@@ -401,7 +442,7 @@ export default function PartnerRoute() {
       </Modal>
 
       {/* Job offer / active job */}
-      <Modal visible={!!jobAlert} transparent animationType="fade" onRequestClose={() => setJobAlert(null)}>
+      <Modal visible={!!jobAlert && (offerPending || !acceptedJobCollapsed)} transparent animationType="fade" onRequestClose={() => setAcceptedJobCollapsed(true)}>
         <View style={styles.modalBackdrop}>
           <View style={styles.alertCard}>
             <View style={styles.alertIcon}><Ionicons name={offerPending ? 'notifications' : 'navigate'} size={22} color={L.onGo} /></View>
@@ -427,6 +468,18 @@ export default function PartnerRoute() {
               </Text>
             )}
             {actionError && <Text style={styles.actionError}>{actionError}</Text>}
+            {!offerPending && jobAlert?.pickup ? (
+              <Pressable accessibilityRole="button" onPress={() => { void Linking.openURL(`https://www.google.com/maps/dir/?api=1&destination=${jobAlert.pickup?.latitude},${jobAlert.pickup?.longitude}`); }} style={styles.navigationButton}>
+                <Ionicons name="navigate" size={18} color={L.route} />
+                <Text style={styles.navigationText}>Open navigation to client</Text>
+              </Pressable>
+            ) : null}
+            {!offerPending ? (
+              <Pressable accessibilityRole="button" onPress={() => router.push({ pathname: '/(main)/chat/[requestId]', params: { requestId: jobAlert?.id } })} style={styles.chatButton}>
+                <Ionicons name="chatbubble-ellipses-outline" size={18} color={L.text} />
+                <Text style={styles.chatText}>Chat with client</Text>
+              </Pressable>
+            ) : null}
             {offerPending ? (
               <View style={styles.actionRow}>
                 <Pressable
@@ -481,6 +534,11 @@ const styles = StyleSheet.create({
   roundButton: { width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center', backgroundColor: L.surface, ...shadow },
   errorCard: { position: 'absolute', left: 16, right: 16, flexDirection: 'row', alignItems: 'center', gap: 8, padding: 12, borderRadius: 16, backgroundColor: L.surface, ...shadow },
   errorText: { flex: 1, color: L.warn, fontFamily: font.medium, fontSize: 12, lineHeight: 17 },
+  acceptedPill: { position: 'absolute', left: 16, right: 16, flexDirection: 'row', alignItems: 'center', gap: 12, padding: 14, borderRadius: 20, backgroundColor: L.surface, ...shadow },
+  acceptedPillEyebrow: { color: L.go, fontFamily: font.bold, fontSize: 10, letterSpacing: 1.2 },
+  acceptedPillTitle: { color: L.text, fontFamily: font.semibold, fontSize: 14, marginTop: 3 },
+  showJobButton: { height: 40, paddingHorizontal: 14, borderRadius: 999, backgroundColor: L.go, flexDirection: 'row', alignItems: 'center', gap: 5 },
+  showJobText: { color: L.onGo, fontFamily: font.bold, fontSize: 12 },
 
   sheet: { position: 'absolute', left: 0, right: 0, bottom: 0, paddingHorizontal: 20, paddingTop: 10, borderTopLeftRadius: 28, borderTopRightRadius: 28, backgroundColor: L.surface, gap: 6, shadowColor: '#000000', shadowOpacity: 0.16, shadowRadius: 16, shadowOffset: { width: 0, height: -4 }, elevation: 16 },
   grabber: { alignSelf: 'center', width: 40, height: 4, borderRadius: 2, backgroundColor: L.disabled, marginBottom: 10 },
@@ -525,4 +583,8 @@ const styles = StyleSheet.create({
   declineText: { color: L.text, fontFamily: font.semibold, fontSize: 15 },
   ackButton: { height: 54, borderRadius: 999, backgroundColor: L.go, alignItems: 'center', justifyContent: 'center', marginTop: 8 },
   ackText: { color: L.onGo, fontFamily: font.bold, fontSize: 15 },
+  navigationButton: { height: 46, borderRadius: 14, backgroundColor: L.routeSoft, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, marginTop: 2 },
+  navigationText: { color: L.route, fontFamily: font.bold, fontSize: 13 },
+  chatButton: { height: 46, borderRadius: 14, borderWidth: 1, borderColor: L.border, backgroundColor: L.surface, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 },
+  chatText: { color: L.text, fontFamily: font.semibold, fontSize: 13 },
 });
