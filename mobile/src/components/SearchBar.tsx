@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { ActivityIndicator, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import React from 'react';
+import { ActivityIndicator, Keyboard, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { type PlaceSuggestion } from '../api';
@@ -10,6 +10,7 @@ type Props = {
   pickupLabel: string;
   pickupValue: string;
   pickupEditing: boolean;
+  destinationValue: string;
   activeSearch: 'pickup' | 'destination';
   busy: boolean;
   suggestions: PlaceSuggestion[];
@@ -18,15 +19,16 @@ type Props = {
   showDestination?: boolean;
   onPickupFocus: () => void;
   onPickupQueryChange: (query: string) => void;
+  onClearPickup: () => void;
+  onClearDestination: () => void;
   onDestinationFocus: () => void;
   onQueryChange: (query: string) => void;
   onSubmit: (query: string) => void;
   onSelect: (suggestion: PlaceSuggestion) => void;
 };
 
-export function SearchBar({ pickupLabel, pickupValue, pickupEditing, activeSearch, busy, suggestions, searchError, routeSummary, showDestination = true, onPickupFocus, onPickupQueryChange, onDestinationFocus, onQueryChange, onSubmit, onSelect }: Props) {
+export function SearchBar({ pickupLabel, pickupValue, pickupEditing, destinationValue, activeSearch, busy, suggestions, searchError, routeSummary, showDestination = true, onPickupFocus, onPickupQueryChange, onClearPickup, onClearDestination, onDestinationFocus, onQueryChange, onSubmit, onSelect }: Props) {
   const { top } = useSafeAreaInsets();
-  const [q, setQ] = useState('');
   return (
     <View style={[s.wrap, { top: top + TOPBAR_HEIGHT + 12 }]} pointerEvents="box-none">
       <View style={s.glass}>
@@ -40,24 +42,43 @@ export function SearchBar({ pickupLabel, pickupValue, pickupEditing, activeSearc
             placeholderTextColor={light.textMuted}
             style={s.pickup}
             returnKeyType="search"
+            autoCorrect={false}
+            spellCheck={false}
+            autoComplete="off"
+            importantForAutofill="no"
+            selectTextOnFocus
             accessibilityLabel="Pickup location"
           />
+          {pickupEditing && pickupValue.length > 0 ? (
+            <Pressable accessibilityRole="button" accessibilityLabel="Clear pickup address" hitSlop={10} onPress={onClearPickup}>
+              <Ionicons name="close-circle" size={20} color={light.textMuted} />
+            </Pressable>
+          ) : null}
         </View>
         {showDestination ? <View style={s.divider} /> : null}
         {showDestination ? <View style={s.row}>
           <View style={[s.dot, { backgroundColor: light.text, borderRadius: 2 }]} />
           <TextInput
-            value={q}
+            value={destinationValue}
             onFocus={onDestinationFocus}
-            onChangeText={(text) => { setQ(text); onQueryChange(text); }}
+            onChangeText={onQueryChange}
             placeholder="Where should we tow it?"
             placeholderTextColor={light.textMuted}
             style={s.input}
             returnKeyType="search"
-            onSubmitEditing={() => q.trim() && onSubmit(q.trim())}
+            autoCorrect={false}
+            spellCheck={false}
+            autoComplete="off"
+            importantForAutofill="no"
+            selectTextOnFocus
+            onSubmitEditing={() => destinationValue.trim() && onSubmit(destinationValue.trim())}
             accessibilityLabel="Tow destination"
           />
-          {busy ? <ActivityIndicator color={light.go} /> : <Ionicons name="search" size={18} color={light.textMuted} />}
+          {busy ? <ActivityIndicator color={light.go} /> : destinationValue.length > 0 ? (
+            <Pressable accessibilityRole="button" accessibilityLabel="Clear destination" hitSlop={10} onPress={onClearDestination}>
+              <Ionicons name="close-circle" size={20} color={light.textMuted} />
+            </Pressable>
+          ) : <Ionicons name="search" size={18} color={light.textMuted} />}
         </View> : null}
         {routeSummary ? <Text style={s.routeSummary}>{routeSummary}</Text> : null}
       </View>
@@ -68,7 +89,7 @@ export function SearchBar({ pickupLabel, pickupValue, pickupEditing, activeSearc
               key={suggestion.placeId}
               accessibilityRole="button"
               accessibilityLabel={`Select ${suggestion.description}`}
-              onPress={() => { if (activeSearch === 'destination') setQ(suggestion.description); onSelect(suggestion); }}
+              onPress={() => { Keyboard.dismiss(); onSelect(suggestion); }}
               style={s.result}
             >
               <Ionicons name="location-outline" size={18} color={light.go} />

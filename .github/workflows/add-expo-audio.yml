@@ -1,0 +1,40 @@
+name: Add expo-audio (one-time)
+
+# Run this once from the Actions tab. It installs the SDK-compatible expo-audio
+# and commits the updated package.json + package-lock.json, so `npm ci` keeps working.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  add:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: mobile/package-lock.json
+
+      - name: Install current dependencies
+        working-directory: mobile
+        run: npm ci
+
+      - name: Add expo-audio
+        working-directory: mobile
+        run: npx expo install expo-audio
+
+      - name: Commit lockfile changes
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add mobile/package.json mobile/package-lock.json
+          git diff --cached --quiet && echo "expo-audio already installed" && exit 0
+          git commit -m "Add expo-audio for partner new-job alert sound"
+          git push

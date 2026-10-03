@@ -120,7 +120,7 @@ export default function HomeScreen() {
   // Debounced Places (New) search, biased toward the motorist and restricted to South Africa.
   useEffect(() => {
     const query = (searchMode === 'pickup' ? pickupSearchQuery : searchQuery).trim();
-    if (!me || query.length < 3 || (searchMode === 'destination' && dest)) {
+    if (!me || searching || query.length < 3 || (searchMode === 'destination' && dest)) {
       setPlaceSuggestions([]);
       setSuggesting(false);
       return;
@@ -144,7 +144,7 @@ export default function HomeScreen() {
         .finally(() => { if (current) setSuggesting(false); });
     }, 350);
     return () => { current = false; clearTimeout(timer); };
-  }, [searchMode, pickupSearchQuery, searchQuery, me, dest]);
+  }, [searchMode, pickupSearchQuery, searchQuery, me, dest, searching]);
 
   // 2) Load nearby trucks + dynamic ZAR quotes, refresh every 30s.
   const load = useCallback(async () => {
@@ -287,6 +287,8 @@ export default function HomeScreen() {
   const selectPlace = async (suggestion: PlaceSuggestion) => {
     if (!me) return;
     const selectingPickup = searchMode === 'pickup';
+    const previousQuery = searchQuery;
+    if (!selectingPickup) setSearchQuery(suggestion.description);
     setPlaceSuggestions([]);
     setSearchError(null);
     setSearching(true);
@@ -313,6 +315,7 @@ export default function HomeScreen() {
       Haptics.selectionAsync();
     } catch (error: unknown) {
       if (!selectingPickup) {
+        setSearchQuery(previousQuery);
         setDest(null);
         setRoute(null);
       }
@@ -464,9 +467,13 @@ export default function HomeScreen() {
         }}
         onPickupQueryChange={(query) => {
           setSearchMode('pickup');
+          setPickupEditing(true);
           setPickupSearchQuery(query);
           setSearchError(null);
         }}
+        destinationValue={searchQuery}
+        onClearPickup={() => { setSearchMode('pickup'); setPickupEditing(true); setPickupSearchQuery(''); setPlaceSuggestions([]); setSearchError(null); }}
+        onClearDestination={() => changeDestinationQuery('')}
         onDestinationFocus={() => setSearchMode('destination')}
         onQueryChange={changeDestinationQuery}
         onSubmit={setSearchQuery}
@@ -581,7 +588,7 @@ export default function HomeScreen() {
               )}
               {activeStatus ? (
                 <View style={s.statusActions}>
-                  {requestStatus !== 'pending' ? <Pressable accessibilityRole="button" onPress={() => router.push({ pathname: '/(main)/chat/[requestId]', params: { requestId: activeRequestId } })} style={s.chatAction}><Ionicons name="chatbubble-ellipses-outline" size={18} color={L.text} /><Text style={s.chatActionText}>Chat with partner</Text></Pressable> : null}
+                  {requestStatus !== 'pending' ? <Pressable accessibilityRole="button" onPress={() => router.push({ pathname: '/(main)/chat/[requestId]', params: { requestId: activeRequestId, peer: 'partner' } })} style={s.chatAction}><Ionicons name="chatbubble-ellipses-outline" size={18} color={L.text} /><Text style={s.chatActionText}>Chat with partner</Text></Pressable> : null}
                   <Pressable accessibilityRole="button" disabled={cancelling} onPress={cancelActiveRequest} style={[s.cancelButton, cancelling && s.cancelButtonOff]}>
                     {cancelling ? <ActivityIndicator size="small" color={L.danger} /> : <Text style={s.cancelText}>Cancel request</Text>}
                   </Pressable>
