@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
 import { Redirect, Slot, useRouter, useSegments } from 'expo-router';
 import * as Linking from 'expo-linking';
@@ -25,6 +25,7 @@ export default function RootLayout() {
   const inAuthCallback = segments[0] === 'auth' && segments[1] === 'callback';
   const [authState, setAuthState] = useState<AuthState>({ status: 'loading' });
   const [retry, setRetry] = useState(0);
+  const slotShown = useRef(false);
   const [fontsLoaded] = useFonts({
     PlusJakartaSans_400Regular,
     PlusJakartaSans_500Medium,
@@ -123,42 +124,54 @@ export default function RootLayout() {
     };
   }, [router]);
 
-  if (!fontsLoaded) return <LoadingScreen />;
-  // Never redirect an existing guest session away from a magic-link callback
-  // before its PKCE code has been exchanged for the invited user's session.
-  if (inAuthCallback) return <AppFrame><Slot /></AppFrame>;
-  if (authState.status === 'loading') return <LoadingScreen />;
-
-  if (authState.status === 'error') {
-    const hint = authHint(authState.message);
-    return (
-      <AppFrame>
-        <View style={styles.messageWrap}>
-          <Text style={styles.title}>Towber profile unavailable</Text>
-          <Text style={styles.body}>{authState.message}</Text>
-          <Text style={styles.hint}>{hint}</Text>
-          <Pressable accessibilityRole="button" onPress={() => setRetry((value) => value + 1)} style={styles.retry}>
-            <Text style={styles.retryText}>Try again</Text>
-          </Pressable>
-          <Pressable accessibilityRole="button" onPress={() => { void supabase.auth.signOut(); }} style={styles.textButton}>
-            <Text style={styles.textButtonLabel}>Sign out / use another account</Text>
-          </Pressable>
-        </View>
-      </AppFrame>
-    );
+  // Where the current auth state says we should be (null = stay put).
+  let redirectTo: '/(auth)/sign-in' | '/(main)/driver' | '/(main)/client' | null = null;
+  if (!inAuthCallback) {
+    if (authState.status === 'signed_out') {
+      if (!inAuthGroup) redirectTo = '/(auth)/sign-in';
+    } else if (authState.status === 'ready') {
+      const home = authState.role === 'driver' ? '/(main)/driver' : '/(main)/client';
+      if (inAuthGroup || (segments[0] === '(main)' && segments[1] !== authState.role)) redirectTo = home;
+    }
   }
 
-  if (authState.status === 'signed_out') {
-    if (inAuthGroup) return <AppFrame><Slot /></AppFrame>;
-    return <Redirect href="/(auth)/sign-in" />;
+  // Keep Expo Router mounted after its first display. Unmounting the Slot while
+  // auth changes can leave a Redirect with no navigator and produce a blank screen.
+  const slotReady = fontsLoaded && (inAuthCallback || authState.status === 'signed_out' || authState.status === 'ready');
+  if (slotReady) slotShown.current = true;
+  const showSlot = fontsLoaded && (slotReady || slotShown.current);
+
+  if (!showSlot) {
+    if (authState.status === 'error') return <AppFrame><ErrorScreen message={authState.message} onRetry={() => setRetry((value) => value + 1)} /></AppFrame>;
+    return <LoadingScreen />;
   }
 
-  const role = authState.role;
-  const home = role === 'driver' ? '/(main)/driver' : '/(main)/client';
-  if (inAuthGroup) return <Redirect href={home} />;
-  if (segments[0] === '(main)' && segments[1] !== role) return <Redirect href={home} />;
+  return (
+    <AppFrame>
+      <Slot />
+      {redirectTo ? <Redirect href={redirectTo} /> : null}
+      {!inAuthCallback && authState.status === 'loading' ? <View style={StyleSheet.absoluteFill}><LoadingScreen /></View> : null}
+      {!inAuthCallback && authState.status === 'error' ? (
+        <View style={StyleSheet.absoluteFill}><ErrorScreen message={authState.message} onRetry={() => setRetry((value) => value + 1)} /></View>
+      ) : null}
+    </AppFrame>
+  );
+}
 
-  return <AppFrame><Slot /></AppFrame>;
+function ErrorScreen({ message, onRetry }: { message: string; onRetry: () => void }) {
+  return (
+    <View style={styles.messageWrap}>
+      <Text style={styles.title}>Towber profile unavailable</Text>
+      <Text style={styles.body}>{message}</Text>
+      <Text style={styles.hint}>{authHint(message)}</Text>
+      <Pressable accessibilityRole="button" onPress={onRetry} style={styles.retry}>
+        <Text style={styles.retryText}>Try again</Text>
+      </Pressable>
+      <Pressable accessibilityRole="button" onPress={() => { void supabase.auth.signOut({ scope: 'local' }); }} style={styles.textButton}>
+        <Text style={styles.textButtonLabel}>Sign out / use another account</Text>
+      </Pressable>
+    </View>
+  );
 }
 
 function AppFrame({ children }: { children: React.ReactNode }) {
