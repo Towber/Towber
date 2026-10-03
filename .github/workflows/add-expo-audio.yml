@@ -28,7 +28,12 @@ jobs:
 
       - name: Add expo-audio
         working-directory: mobile
-        run: npx expo install expo-audio
+        run: |
+          # expo install exits non-zero because it cannot edit app.config.ts by itself
+          # (the expo-audio plugin line is already added in the repo), so ignore that exit code
+          # and verify the package really was added instead.
+          npx expo install expo-audio || true
+          grep -q '"expo-audio"' package.json || { echo "expo-audio was not added"; exit 1; }
 
       - name: Commit lockfile changes
         run: |
