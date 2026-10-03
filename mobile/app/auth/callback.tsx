@@ -13,9 +13,10 @@ function first(value: string | string[] | undefined) {
 }
 
 export default function AuthCallbackScreen() {
-  const params = useLocalSearchParams<{ code?: string | string[]; error?: string | string[]; error_description?: string | string[] }>();
+  const params = useLocalSearchParams<{ code?: string | string[]; apply?: string | string[]; error?: string | string[]; error_description?: string | string[] }>();
   const router = useRouter();
   const code = first(params.code);
+  const apply = first(params.apply) === '1';
   const authError = first(params.error_description) ?? first(params.error);
   const exchange = useRef<Promise<AppRole> | null>(null);
   const [message, setMessage] = useState('Verifying sign-in link...');
@@ -50,7 +51,7 @@ export default function AuthCallbackScreen() {
 
     void exchange.current
       .then(async (role) => {
-        const applying = role === 'client' && await hasPartnerIntent();
+        const applying = role === 'client' && (apply || await hasPartnerIntent());
         if (!active) return;
         setMessage('Sign-in complete. Opening your Towber app…');
         if (applying) router.replace('/partner/apply');
@@ -63,7 +64,7 @@ export default function AuthCallbackScreen() {
       });
 
     return () => { active = false; };
-  }, [authError, code]);
+  }, [authError, apply, code]);
 
   return (
     <View style={styles.root}>

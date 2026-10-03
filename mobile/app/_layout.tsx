@@ -79,7 +79,7 @@ export default function RootLayout() {
       setTimeout(() => {
         if (!active) return;
         void loadRole(session).then(async (role) => {
-          if (!active || event !== 'SIGNED_IN' || !role) return;
+          if (!active || event !== 'SIGNED_IN' || !role || inAuthCallback) return;
           if (role === 'client' && await hasPartnerIntent()) router.replace('/partner/apply');
           else router.replace(role === 'driver' ? '/(main)/driver' : '/(main)/client');
         });
@@ -112,6 +112,7 @@ export default function RootLayout() {
           code: firstValue(params.code),
           error: firstValue(params.error),
           error_description: firstValue(params.error_description),
+          apply: firstValue(params.apply),
         },
       });
     };
@@ -123,7 +124,7 @@ export default function RootLayout() {
       active = false;
       subscription.remove();
     };
-  }, [router]);
+  }, [inAuthCallback, router]);
 
   // Where the auth state says we should be (null = stay put).
   let redirectTo: '/(auth)/sign-in' | '/(main)/driver' | '/(main)/client' | null = null;

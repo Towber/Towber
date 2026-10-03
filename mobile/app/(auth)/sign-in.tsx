@@ -1,11 +1,9 @@
 import React, { useState } from 'react';
 import {
   ActivityIndicator,
-  Image,
   KeyboardAvoidingView,
   Platform,
   Pressable,
-  ScrollView,
   StyleSheet,
   Text,
   TextInput,
@@ -25,6 +23,7 @@ export default function SignInScreen() {
   const [sendingLink, setSendingLink] = useState(false);
   const [startingGuest, setStartingGuest] = useState(false);
   const [sentTo, setSentTo] = useState<string | null>(null);
+  const [sentForApplication, setSentForApplication] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const sendMagicLink = async (isNewPartner = false) => {
@@ -37,6 +36,7 @@ export default function SignInScreen() {
     setSendingLink(true);
     setError(null);
     setSentTo(null);
+    setSentForApplication(false);
     try {
       // New applicants may create an account (least-privileged `client` role); invited
       // partners must already exist. The flag sends applicants to the application after sign-in.
@@ -44,12 +44,15 @@ export default function SignInScreen() {
       const { error: signInError } = await supabase.auth.signInWithOtp({
         email: normalizedEmail,
         options: {
-          emailRedirectTo: Linking.createURL('/auth/callback'),
+          emailRedirectTo: Linking.createURL('/auth/callback', {
+            queryParams: isNewPartner ? { apply: '1' } : undefined,
+          }),
           shouldCreateUser: isNewPartner,
         },
       });
       if (signInError) throw signInError;
       setSentTo(normalizedEmail);
+      setSentForApplication(isNewPartner);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : 'Could not send the sign-in link. Try again.');
     } finally {
@@ -76,9 +79,8 @@ export default function SignInScreen() {
     <SafeAreaView style={styles.safe} edges={['top', 'bottom']}>
       <StatusBar style="dark" />
       <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-        <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
+        <View style={styles.content}>
           <View style={styles.header}>
-            <Image accessible accessibilityLabel="Towber logo" resizeMode="contain" source={require('../../assets/icon.png')} style={styles.logo} />
             <Text style={styles.brand}>Towber</Text>
             <Text style={styles.tagline}>Roadside help, when you need it.</Text>
           </View>
@@ -102,14 +104,14 @@ export default function SignInScreen() {
           <View style={styles.card}>
             <View style={[styles.tag, styles.tagDark]}><Text style={[styles.tagText, { color: '#FFFFFF' }]}>{PARTNER.portalTag}</Text></View>
             <Text style={styles.cardTitle}>{PARTNER.Plural}</Text>
-            <Text style={styles.cardBody}>Towing, fuel, tyres and more. Sign in with the email Towber invited and we’ll send you a one-time link.</Text>
+            <Text style={styles.cardBody}>Sign in with your email, or apply to offer towing, fuel, tyres and roadside help.</Text>
             <TextInput
               accessibilityLabel="Email address"
               autoCapitalize="none"
               autoComplete="email"
               autoCorrect={false}
               keyboardType="email-address"
-              onChangeText={(value) => { setEmail(value); setError(null); setSentTo(null); }}
+              onChangeText={(value) => { setEmail(value); setError(null); setSentTo(null); setSentForApplication(false); }}
               placeholder="Email address"
               placeholderTextColor={L.disabledText}
               returnKeyType="send"
@@ -131,14 +133,14 @@ export default function SignInScreen() {
               onPress={() => { void sendMagicLink(true); }}
               style={({ pressed }) => [styles.applyButton, pressed && styles.pressed, actionsDisabled && styles.disabled]}
             >
-              <Text style={styles.applyText}>New here? Apply to become a {PARTNER.singular}</Text>
+              <Text style={styles.applyText}>New here? Apply as a {PARTNER.singular}</Text>
             </Pressable>
           </View>
 
           {sentTo ? (
             <View accessibilityLiveRegion="polite" style={styles.notice}>
               <Text style={styles.noticeTitle}>Check your email</Text>
-              <Text style={styles.noticeText}>We sent a one-time link to {sentTo}. Open it on this phone to return to Towber.</Text>
+              <Text style={styles.noticeText}>{sentForApplication ? `We sent a verification link to ${sentTo}. Open it on this phone and your partner application will open next.` : `We sent a one-time link to ${sentTo}. Open it on this phone to return to Towber.`}</Text>
             </View>
           ) : null}
 
@@ -152,7 +154,7 @@ export default function SignInScreen() {
           ) : null}
 
           <Text style={styles.footer}>Guest sessions are temporary and can’t be recovered after signing out or reinstalling the app.</Text>
-        </ScrollView>
+        </View>
       </KeyboardAvoidingView>
     </SafeAreaView>
   );
@@ -161,31 +163,30 @@ export default function SignInScreen() {
 const styles = StyleSheet.create({
   flex: { flex: 1 },
   safe: { flex: 1, backgroundColor: L.bg },
-  content: { flexGrow: 1, justifyContent: 'center', paddingHorizontal: 20, paddingTop: 20, paddingBottom: 32, gap: 16 },
-  header: { alignItems: 'center', marginBottom: 8 },
-  logo: { width: 84, height: 84, borderRadius: 22 },
-  brand: { color: L.text, fontFamily: font.bold, fontSize: 34, letterSpacing: -1, marginTop: 14 },
-  tagline: { color: L.textMuted, fontFamily: font.medium, fontSize: 15, marginTop: 4 },
-  card: { padding: 20, borderRadius: 22, backgroundColor: L.surfaceRaised, gap: 12 },
-  tag: { alignSelf: 'flex-start', paddingHorizontal: 10, paddingVertical: 5, borderRadius: 999, backgroundColor: L.goSoft },
+  content: { flex: 1, justifyContent: 'center', paddingHorizontal: 18, gap: 10 },
+  header: { alignItems: 'center', marginBottom: 2 },
+  brand: { color: L.text, fontFamily: font.bold, fontSize: 30, letterSpacing: -1 },
+  tagline: { color: L.textMuted, fontFamily: font.medium, fontSize: 13, marginTop: 2 },
+  card: { padding: 14, borderRadius: 18, backgroundColor: L.surfaceRaised, gap: 8 },
+  tag: { alignSelf: 'flex-start', paddingHorizontal: 9, paddingVertical: 4, borderRadius: 999, backgroundColor: L.goSoft },
   tagDark: { backgroundColor: '#111827' },
-  tagText: { color: L.go, fontFamily: font.bold, fontSize: 11, letterSpacing: 1.2 },
-  cardTitle: { color: L.text, fontFamily: font.bold, fontSize: 24, letterSpacing: -0.5 },
-  cardBody: { color: L.textMuted, fontFamily: font.medium, fontSize: 14, lineHeight: 20 },
-  primaryButton: { height: 54, borderRadius: 999, backgroundColor: L.go, alignItems: 'center', justifyContent: 'center', marginTop: 4 },
-  primaryText: { color: L.onGo, fontFamily: font.bold, fontSize: 16 },
-  input: { height: 52, borderRadius: 14, backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: L.border, paddingHorizontal: 16, color: L.text, fontFamily: font.medium, fontSize: 16 },
-  darkButton: { height: 54, borderRadius: 999, backgroundColor: '#111827', alignItems: 'center', justifyContent: 'center' },
-  darkText: { color: '#FFFFFF', fontFamily: font.bold, fontSize: 16 },
-  applyButton: { height: 48, borderRadius: 999, alignItems: 'center', justifyContent: 'center', borderWidth: 1.5, borderColor: '#111827' },
-  applyText: { color: '#111827', fontFamily: font.semibold, fontSize: 14 },
+  tagText: { color: L.go, fontFamily: font.bold, fontSize: 10, letterSpacing: 1.1 },
+  cardTitle: { color: L.text, fontFamily: font.bold, fontSize: 20, letterSpacing: -0.4 },
+  cardBody: { color: L.textMuted, fontFamily: font.medium, fontSize: 12, lineHeight: 17 },
+  primaryButton: { height: 46, borderRadius: 999, backgroundColor: L.go, alignItems: 'center', justifyContent: 'center', marginTop: 2 },
+  primaryText: { color: L.onGo, fontFamily: font.bold, fontSize: 14 },
+  input: { height: 46, borderRadius: 12, backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: L.border, paddingHorizontal: 14, color: L.text, fontFamily: font.medium, fontSize: 15 },
+  darkButton: { height: 46, borderRadius: 999, backgroundColor: '#111827', alignItems: 'center', justifyContent: 'center' },
+  darkText: { color: '#FFFFFF', fontFamily: font.bold, fontSize: 14 },
+  applyButton: { height: 40, borderRadius: 999, alignItems: 'center', justifyContent: 'center', borderWidth: 1.5, borderColor: '#111827' },
+  applyText: { color: '#111827', fontFamily: font.semibold, fontSize: 13 },
   pressed: { opacity: 0.85 },
   disabled: { opacity: 0.55 },
-  notice: { padding: 14, borderRadius: 16, backgroundColor: L.goSoft, gap: 4 },
-  noticeTitle: { color: L.go, fontFamily: font.bold, fontSize: 14 },
-  noticeText: { color: L.text, fontFamily: font.regular, fontSize: 13, lineHeight: 19 },
-  errorBox: { padding: 14, borderRadius: 16, backgroundColor: 'rgba(220,38,38,0.08)', gap: 6 },
-  errorText: { color: L.danger, fontFamily: font.medium, fontSize: 13, lineHeight: 19 },
-  errorHint: { color: L.warn, fontFamily: font.regular, fontSize: 12, lineHeight: 18 },
-  footer: { color: L.textMuted, fontFamily: font.regular, fontSize: 12, lineHeight: 18, textAlign: 'center', paddingHorizontal: 12 },
+  notice: { padding: 10, borderRadius: 13, backgroundColor: L.goSoft, gap: 3 },
+  noticeTitle: { color: L.go, fontFamily: font.bold, fontSize: 13 },
+  noticeText: { color: L.text, fontFamily: font.regular, fontSize: 11, lineHeight: 16 },
+  errorBox: { padding: 10, borderRadius: 13, backgroundColor: 'rgba(220,38,38,0.08)', gap: 4 },
+  errorText: { color: L.danger, fontFamily: font.medium, fontSize: 12, lineHeight: 17 },
+  errorHint: { color: L.warn, fontFamily: font.regular, fontSize: 11, lineHeight: 16 },
+  footer: { color: L.textMuted, fontFamily: font.regular, fontSize: 10, lineHeight: 14, textAlign: 'center', paddingHorizontal: 10 },
 });
