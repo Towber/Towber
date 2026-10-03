@@ -9,6 +9,7 @@ import { useFonts, PlusJakartaSans_400Regular, PlusJakartaSans_500Medium, PlusJa
 import type { Session } from '@supabase/supabase-js';
 
 import { supabase } from '../src/api';
+import { hasPartnerIntent } from '../src/partnerIntent';
 import { colors, font } from '../src/theme';
 
 type AppRole = 'client' | 'driver';
@@ -77,10 +78,10 @@ export default function RootLayout() {
       setAuthState({ status: 'loading' });
       setTimeout(() => {
         if (!active) return;
-        void loadRole(session).then((role) => {
-          if (active && event === 'SIGNED_IN' && role) {
-            router.replace(role === 'driver' ? '/(main)/driver' : '/(main)/client');
-          }
+        void loadRole(session).then(async (role) => {
+          if (!active || event !== 'SIGNED_IN' || !role) return;
+          if (role === 'client' && await hasPartnerIntent()) router.replace('/partner/apply');
+          else router.replace(role === 'driver' ? '/(main)/driver' : '/(main)/client');
         });
       }, 0);
     });
@@ -124,7 +125,7 @@ export default function RootLayout() {
     };
   }, [router]);
 
-  // Where the current auth state says we should be (null = stay put).
+  // Where the auth state says we should be (null = stay put).
   let redirectTo: '/(auth)/sign-in' | '/(main)/driver' | '/(main)/client' | null = null;
   if (!inAuthCallback) {
     if (authState.status === 'signed_out') {
@@ -135,8 +136,9 @@ export default function RootLayout() {
     }
   }
 
-  // Keep Expo Router mounted after its first display. Unmounting the Slot while
-  // auth changes can leave a Redirect with no navigator and produce a blank screen.
+  // Keep the navigator mounted once it has been shown. Unmounting it while auth
+  // state changes (e.g. on sign-out) left the redirect with nothing to render
+  // into, which is what produced the blank screen after "Switch account".
   const slotReady = fontsLoaded && (inAuthCallback || authState.status === 'signed_out' || authState.status === 'ready');
   if (slotReady) slotShown.current = true;
   const showSlot = fontsLoaded && (slotReady || slotShown.current);

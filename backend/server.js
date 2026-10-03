@@ -26,6 +26,7 @@ const nearbyQuery = z.object({
   lat, lng,
   distance_km: z.coerce.number().min(0.5).max(1500).default(10),
   radius_m: z.coerce.number().min(500).max(50000).default(15000),
+  breakdown_type: z.enum(['flatbed', 'jumpstart', 'lockout', 'fuel', 'tyre', 'repair']).default('flatbed'),
 });
 const locationBody = z.object({
   lat,
@@ -53,7 +54,7 @@ const statusActionBody = z.object({
 });
 
 const ACTIVE_STATUSES = ['pending', 'accepted', 'en_route', 'arrived'];
-const ACTIVE_REQUEST_ERROR = 'You already have an active tow request. Cancel it before requesting another tow.';
+const ACTIVE_REQUEST_ERROR = 'You already have an active request. Cancel it before requesting again.';
 const autocompleteBody = z.object({
   input: z.string().trim().min(2).max(120),
   origin: point.optional(),
@@ -99,7 +100,7 @@ function normalizeVehicle(r) {
   return {
     vehicleId: r.vehicle_id ?? r.id,
     companyId: r.company_id ?? null,
-    companyName: r.company_name ?? r.name ?? 'Tow operator',
+    companyName: r.company_name ?? r.name ?? 'Towber partner',
     vehicleType: r.vehicle_type,
     plate: r.registration_number ?? r.license_plate ?? null,
     lat: numeric(r.lat ?? r.latitude),
@@ -109,6 +110,9 @@ function normalizeVehicle(r) {
     etaMin: r.eta_minutes ?? (distanceKm != null ? Math.max(2, Math.round((numeric(distanceKm) / 40) * 60)) : null),
     priceMin: numeric(r.price_min ?? r.estimated_price_min ?? r.min_price),
     priceMax: numeric(r.price_max ?? r.estimated_price_max ?? r.estimated_price),
+    pricingModel: r.pricing_model ?? 'distance',
+    priceNote: r.price_note ?? null,
+    surchargeLabel: r.surcharge_label ?? null,
   };
 }
 
@@ -127,23 +131,25 @@ function mapTransitionError(error) {
   }
   if (message.includes('conflict:')) {
     let reason = 'That action is not available right now.';
-    if (message.includes('not_pending')) reason = 'This request is no longer waiting for a driver.';
+    if (message.includes('not_pending')) reason = 'This request is no longer waiting for a partner.';
     else if (message.includes('reassigned')) reason = 'This offer moved to another truck.';
-    else if (message.includes('not_accepted')) reason = 'The driver has not accepted this request yet.';
-    else if (message.includes('not_en_route')) reason = 'The driver has not started driving yet.';
-    else if (message.includes('not_arrived')) reason = 'The driver has not arrived yet.';
+    else if (message.includes('not_accepted')) reason = 'The partner has not accepted this request yet.';
+    else if (message.includes('not_en_route')) reason = 'The partner has not started travelling yet.';
+    else if (message.includes('not_arrived')) reason = 'The partner has not arrived yet.';
     else if (message.includes('closed')) reason = 'This request is already closed.';
     return { status: 409, error: reason };
   }
   return null;
 }
 
-async function findNearby({ lat, lng, distance_km, radius_m }) {
+// Only partners that offer `breakdown_type` and have a price for it are returned.
+async function findNearby({ lat, lng, distance_km, radius_m, breakdown_type = 'flatbed' }) {
   const { data, error } = await supabase.rpc('get_nearby_vehicles', {
     user_lat: lat,
     user_lng: lng,
     trip_distance_km: distance_km,
     search_radius_meters: radius_m,
+    p_breakdown_type: breakdown_type,
   });
   if (error) throw error;
   return (data ?? []).map(normalizeVehicle);
@@ -343,7 +349,7 @@ app.patch('/api/vehicles/:id/location', requireUser, wrap(async (req, res) => {
     p_speed_mps: body.speedMps ?? null,
   });
   if (error?.code === '42501') return res.status(403).json({ error: 'Not authorized to update this vehicle' });
-  if (error?.code === '22023') return res.status(400).json({ error: 'Invalid driver location' });
+  if (error?.code === '22023') return res.status(400).json({ error: 'Invalid partner location' });
   if (error) throw error;
   res.status(204).end();
 }));
@@ -368,17 +374,20 @@ app.post('/api/requests', requireUser, wrap(async (req, res) => {
 
   const candidates = await findNearby({
     lat: b.pickup.lat, lng: b.pickup.lng, distance_km: b.tripDistanceKm, radius_m: 50000,
+    breakdown_type: b.breakdownType,
   });
   const chosen = candidates.find((v) => v.vehicleId === b.vehicleId);
-  if (!chosen) return res.status(409).json({ error: 'That truck is no longer available. Pick another.' });
+  if (!chosen) return res.status(409).json({ error: 'That partner is no longer available. Pick another.' });
 
-  const { data: fareRows, error: fareError } = await supabase.rpc('calculate_tow_fare', {
+  // Towing: call-out + per km (min fare). Everything else: flat fee. Both x after-hours multiplier.
+  const { data: fareRows, error: fareError } = await supabase.rpc('calculate_service_fare', {
     p_vehicle_id: chosen.vehicleId,
+    p_breakdown_type: b.breakdownType,
     p_distance_km: b.tripDistanceKm,
   });
   if (fareError) throw fareError;
   const fare = Array.isArray(fareRows) ? fareRows[0] : fareRows;
-  if (!fare) return res.status(409).json({ error: 'No active ZAR fare is configured for this truck.' });
+  if (!fare) return res.status(409).json({ error: 'This partner has no active ZAR price for that service.' });
 
   const total = numeric(fare.total_zar, Number.NaN);
   if (!Number.isFinite(total) || total < 0) {
@@ -409,6 +418,11 @@ app.post('/api/requests', requireUser, wrap(async (req, res) => {
       quoted_callout_fee_zar: numeric(fare.callout_fee_zar),
       quoted_per_km_rate_zar: numeric(fare.per_km_rate_zar),
       quoted_minimum_fare_zar: numeric(fare.minimum_fare_zar),
+      fare_pricing_model: fare.pricing_model,
+      quoted_flat_fee_zar: fare.flat_fee_zar == null ? null : numeric(fare.flat_fee_zar),
+      fare_surcharge_multiplier: numeric(fare.surcharge_multiplier, 1),
+      fare_surcharge_label: fare.surcharge_label ?? null,
+      fare_price_note: fare.price_note ?? null,
       fare_quoted_at: new Date().toISOString(),
       status: 'pending',
     })
@@ -425,7 +439,7 @@ app.post('/api/requests', requireUser, wrap(async (req, res) => {
     .insert({ request_id: data.id, vehicle_id: chosen.vehicleId });
   if (offerError && offerError.code !== '23505') throw offerError;
 
-  res.status(201).json({ request: data, truck: { ...chosen, priceMin: total, priceMax: total } });
+  res.status(201).json({ request: data, truck: { ...chosen, priceMin: total, priceMax: total, pricingModel: fare.pricing_model, priceNote: fare.price_note ?? null, surchargeLabel: fare.surcharge_label ?? null } });
 }));
 
 // 6) The motorist's current request, if any. Sweeps stale offers first so a

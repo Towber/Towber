@@ -1,4 +1,6 @@
-# Towber email test-driver setup
+# Towber email test partner setup
+
+> The app calls these users *partners*. Their database role is still named `driver`, so the SQL below is unchanged.
 
 The app accepts email magic links only for users already invited to Supabase. The installed app's custom scheme is `towber`.
 
@@ -6,7 +8,7 @@ The app accepts email magic links only for users already invited to Supabase. Th
 
 1. In **Authentication → URL Configuration**, add `towber://auth/callback` to **Additional Redirect URLs** and save.
 2. In **Authentication → Users**, choose **Add user → Invite user** and invite `kamogeloralph@gmail.com`.
-3. After the Auth user has been created, open **SQL Editor** and run the following query to create or update only that user's application profile as a driver:
+3. After the Auth user has been created, open **SQL Editor** and run the following query to create or update only that user's application profile as a partner (role `driver`):
 
 ```sql
 WITH invited_user AS (

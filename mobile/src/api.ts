@@ -11,7 +11,7 @@ export const supabase = createClient(
 );
 
 export type LatLng = { lat: number; lng: number };
-export type VehicleType = 'flatbed_rollback' | 'standard_tow' | 'heavy_duty' | 'winch_recovery';
+export type VehicleType = 'flatbed_rollback' | 'standard_tow' | 'heavy_duty' | 'winch_recovery' | 'roadside_unit';
 
 export type Truck = {
   vehicleId: string;
@@ -24,6 +24,10 @@ export type Truck = {
   etaMin: number | null;
   priceMin: number;
   priceMax: number;
+  /** 'distance' = towing (call-out + per km); 'flat' = one fixed fee. */
+  pricingModel?: 'distance' | 'flat';
+  priceNote?: string | null;
+  surchargeLabel?: string | null;
 };
 
 export type DriverLocation = LatLng & {
@@ -78,7 +82,7 @@ export type RoadRoute = {
   coordinates: LatLng[];
 };
 
-// Drivers use invited email links. Motorists may also use a temporary guest session.
+// Partners use invited email links. Motorists may also use a temporary guest session.
 async function token() {
   const { data } = await supabase.auth.getSession();
   if (data.session) return data.session.access_token;
@@ -102,9 +106,9 @@ async function call<T>(path: string, init?: RequestInit, auth = false): Promise<
   return body as T;
 }
 
-export const fetchNearby = (p: LatLng, distanceKm: number) =>
+export const fetchNearby = (p: LatLng, distanceKm: number, breakdownType: BreakdownType = 'flatbed') =>
   call<{ vehicles: Truck[] }>(
-    `/api/vehicles/nearby?lat=${p.lat}&lng=${p.lng}&distance_km=${distanceKm}`,
+    `/api/vehicles/nearby?lat=${p.lat}&lng=${p.lng}&distance_km=${distanceKm}&breakdown_type=${breakdownType}`,
   ).then((r) => r.vehicles);
 
 export function fetchPlaceSuggestions(input: string, origin: LatLng, sessionToken: string) {
@@ -173,7 +177,7 @@ export const getRequest = (requestId: string) =>
 export const fetchActiveRequest = () =>
   call<{ request: TowRequest | null }>('/api/requests/active', undefined, true).then((r) => r.request);
 
-// Driver accepts/progresses; motorists cancel. The API enforces who may act.
+// Partner accepts/progresses; motorists cancel. The API enforces who may act.
 export function transitionRequest(requestId: string, action: RequestAction) {
   const path = `/api/requests/${encodeURIComponent(requestId)}`;
   if (action === 'accept' || action === 'decline') {

@@ -57,5 +57,8 @@ jobs:
       - name: Reconcile the existing baseline migration history
         run: npx --yes supabase@2.119.0 migration repair 20260930222400 --status applied --linked --yes
 
+      - name: Reconcile service and vehicle migration version already applied
+        run: npx --yes supabase@2.119.0 migration repair 20261002000004 --status applied --linked --yes
+
       - name: Apply pending versioned migrations
         run: npx --yes supabase@2.119.0 db push --linked --yes

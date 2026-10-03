@@ -10,7 +10,7 @@ import * as Location from 'expo-location';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { darkMapStyle, font, light as L, radius, zarRange } from '../../../src/theme';
+import { darkMapStyle, font, light as L, radius, zar, zarRange } from '../../../src/theme';
 import { supabase, type BreakdownType, createRequest, fetchActiveRequest, fetchNearby, fetchPlaceSuggestions, fetchRoadRoute, getRequest, isActiveRequestStatus, isTerminalRequestStatus, transitionRequest, type LatLng, type PlaceSuggestion, type RoadRoute, roadKm, subscribeRequestDriverLocation, type RequestStatus, type Truck } from '../../../src/api';
 import { SearchBar } from '../../../src/components/SearchBar';
 import { TopBar, TOPBAR_HEIGHT } from '../../../src/components/TopBar';
@@ -33,24 +33,24 @@ const TIMELINE: { key: RequestStatus; label: string }[] = [
   { key: 'completed', label: 'Done' },
 ];
 const STATUS_TITLE: Record<RequestStatus, string> = {
-  pending: 'Finding your driver',
-  accepted: 'Driver found',
-  en_route: 'Driver en route',
-  arrived: 'Driver has arrived',
+  pending: 'Finding a partner',
+  accepted: 'Partner found',
+  en_route: 'Partner on the way',
+  arrived: 'Partner has arrived',
   completed: 'Tow complete',
   cancelled: 'Request cancelled',
   declined: 'No truck available',
-  expired: 'No response from drivers',
+  expired: 'No response from partners',
 };
 const STATUS_COPY: Record<RequestStatus, string> = {
   pending: 'Nearby trucks have been notified of your breakdown.',
-  accepted: 'Your driver is preparing to leave.',
+  accepted: 'Your partner is preparing to leave.',
   en_route: 'Live GPS tracking is on — watch the truck approach.',
-  arrived: 'Your driver is at the pickup point.',
+  arrived: 'Your partner is at your location.',
   completed: 'Thanks for riding with Towber. Safe travels.',
   cancelled: 'You cancelled this request. You can request a new tow anytime.',
   declined: 'Every nearby truck was unavailable. Try again or pick another truck.',
-  expired: 'No driver responded in time. Try again with the nearest trucks.',
+  expired: 'No partner responded in time. Try again with the nearest trucks.',
 };
 
 // White Bolt-style bottom sheet.
@@ -144,14 +144,14 @@ export default function HomeScreen() {
   const load = useCallback(async () => {
     if (!me) return;
     try {
-      setTrucks(await fetchNearby(me, tripKm));
+      setTrucks(await fetchNearby(me, tripKm, breakdownType));
       setQuoteDistanceKm(tripKm);
     } catch (e: any) {
-      Alert.alert('Could not load tow trucks', e.message ?? 'Check your connection and try again.');
+      Alert.alert('Could not load nearby partners', e.message ?? 'Check your connection and try again.');
     } finally {
       setLoading(false);
     }
-  }, [me, tripKm]);
+  }, [me, tripKm, breakdownType]);
 
   useEffect(() => {
     load();
@@ -375,7 +375,7 @@ export default function HomeScreen() {
   const quoteRefreshing = quoteDistanceKm !== tripKm;
   const ctaDisabled = !selected || needsDest || requesting;
   const trackingCopy: Record<Exclude<TrackingState, 'idle'>, string> = {
-    connecting: 'Connecting to private driver tracking…',
+    connecting: 'Connecting to private live tracking…',
     connected: 'Private tracking connected · waiting for a GPS update',
     error: 'Tracking connection interrupted · reconnecting',
   };
@@ -483,7 +483,7 @@ export default function HomeScreen() {
       <BottomSheet ref={sheetRef} snapPoints={[192 + bottom, '62%']} index={expanded ? 1 : 0} backgroundComponent={Sheet} handleIndicatorStyle={{ backgroundColor: '#D1D5DB', width: 40 }}>
         <BottomSheetView style={s.sheet}>
           <View style={s.head}>
-            <Text style={s.title}>{activeRequestId ? 'Your tow request' : !isTow ? 'Nearby help' : expanded ? 'Nearby tow trucks' : 'Where to?'}</Text>
+            <Text style={s.title}>{activeRequestId ? 'Your request' : !isTow ? 'Nearby help' : expanded ? 'Nearby tow trucks' : 'Where to?'}</Text>
             <View style={s.headActions}>
               {expanded && !loading && <Text style={s.count}>{trucks.length} available</Text>}
             </View>
@@ -521,7 +521,7 @@ export default function HomeScreen() {
 
           {activeRequestId ? (
             <View style={[s.statusPanel, { marginBottom: bottom + 8 }]}>
-              <Text style={s.statusTitle}>{requestStatus ? STATUS_TITLE[requestStatus] : 'Your tow request'}</Text>
+              <Text style={s.statusTitle}>{requestStatus ? STATUS_TITLE[requestStatus] : 'Your request'}</Text>
               <Text style={s.statusSubtitle}>
                 {requestStatus ? STATUS_COPY[requestStatus] : 'Checking the latest status…'}
               </Text>
@@ -560,7 +560,7 @@ export default function HomeScreen() {
                 </Pressable>
               ) : (
                 <Pressable accessibilityRole="button" onPress={resetRequest} style={[s.cta, { marginHorizontal: 0 }]}>
-                  <Text style={s.ctaText}>{requestStatus === 'completed' ? 'Done' : 'Request another tow'}</Text>
+                  <Text style={s.ctaText}>{requestStatus === 'completed' ? 'Done' : 'Request help again'}</Text>
                 </Pressable>
               )}
             </View>
@@ -573,10 +573,10 @@ export default function HomeScreen() {
             >
               <Text style={[s.ctaText, ctaDisabled && s.ctaTextOff]}>
                 {needsDest ? 'Enter your destination for price'
-                  : !selected ? 'Choose a truck'
+                  : !selected ? (isTow ? 'Choose a truck' : 'Choose a partner')
                   : quoteRefreshing ? 'Updating route-based ZAR estimate…'
                   : requesting ? 'Sending request…'
-                  : `Request Tow  ·  ${zarRange(selected.priceMin, selected.priceMax)}`}
+                  : `${isTow ? 'Request Tow' : `Request ${serviceLabel(breakdownType)}`}  ·  ${selected.pricingModel === 'flat' ? zar(selected.priceMin) : zarRange(selected.priceMin, selected.priceMax)}`}
               </Text>
             </Pressable>
           )}

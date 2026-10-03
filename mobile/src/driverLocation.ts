@@ -13,7 +13,7 @@ export async function startDriverLocationStream(
 ): Promise<() => void> {
   const permission = await Location.requestForegroundPermissionsAsync();
   if (permission.status !== 'granted') {
-    throw new Error('Location permission is required to share driver location.');
+    throw new Error('Location permission is required to share your location.');
   }
 
   let sending = false;
@@ -43,7 +43,7 @@ export async function startDriverLocationStream(
         speedMps,
       })
         .catch((error: unknown) => {
-          onError?.(error instanceof Error ? error : new Error('Could not send driver location.'));
+          onError?.(error instanceof Error ? error : new Error('Could not send your location.'));
         })
         .finally(() => { sending = false; });
     },

@@ -3,6 +3,7 @@ import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-nati
 import { useLocalSearchParams, useRouter } from 'expo-router';
 
 import { supabase } from '../../src/api';
+import { hasPartnerIntent } from '../../src/partnerIntent';
 import { colors, font } from '../../src/theme';
 
 type AppRole = 'client' | 'driver';
@@ -48,10 +49,12 @@ export default function AuthCallbackScreen() {
     }
 
     void exchange.current
-      .then((role) => {
+      .then(async (role) => {
+        const applying = role === 'client' && await hasPartnerIntent();
         if (!active) return;
-        setMessage('Sign-in complete. Opening your Towber portal…');
-        router.replace(role === 'driver' ? '/(main)/driver' : '/(main)/client');
+        setMessage('Sign-in complete. Opening your Towber app…');
+        if (applying) router.replace('/partner/apply');
+        else router.replace(role === 'driver' ? '/(main)/driver' : '/(main)/client');
       })
       .catch((caught: unknown) => {
         if (!active) return;

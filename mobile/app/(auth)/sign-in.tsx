@@ -16,6 +16,8 @@ import { StatusBar } from 'expo-status-bar';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { supabase } from '../../src/api';
+import { PARTNER } from '../../src/copy';
+import { setPartnerIntent } from '../../src/partnerIntent';
 import { font, light as L } from '../../src/theme';
 
 export default function SignInScreen() {
@@ -25,7 +27,7 @@ export default function SignInScreen() {
   const [sentTo, setSentTo] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  const sendMagicLink = async () => {
+  const sendMagicLink = async (isNewPartner = false) => {
     const normalizedEmail = email.trim().toLowerCase();
     if (!normalizedEmail || !/^\S+@\S+\.\S+$/.test(normalizedEmail)) {
       setError('Enter a valid email address.');
@@ -36,11 +38,14 @@ export default function SignInScreen() {
     setError(null);
     setSentTo(null);
     try {
+      // New applicants may create an account (least-privileged `client` role); invited
+      // partners must already exist. The flag sends applicants to the application after sign-in.
+      await setPartnerIntent(isNewPartner);
       const { error: signInError } = await supabase.auth.signInWithOtp({
         email: normalizedEmail,
         options: {
           emailRedirectTo: Linking.createURL('/auth/callback'),
-          shouldCreateUser: false,
+          shouldCreateUser: isNewPartner,
         },
       });
       if (signInError) throw signInError;
@@ -93,11 +98,11 @@ export default function SignInScreen() {
             </Pressable>
           </View>
 
-          {/* DRIVER PORTAL */}
+          {/* PARTNER PORTAL */}
           <View style={styles.card}>
-            <View style={[styles.tag, styles.tagDark]}><Text style={[styles.tagText, { color: '#FFFFFF' }]}>DRIVER PORTAL</Text></View>
-            <Text style={styles.cardTitle}>Tow operators</Text>
-            <Text style={styles.cardBody}>Sign in with the email Towber invited. We’ll send you a one-time link.</Text>
+            <View style={[styles.tag, styles.tagDark]}><Text style={[styles.tagText, { color: '#FFFFFF' }]}>{PARTNER.portalTag}</Text></View>
+            <Text style={styles.cardTitle}>{PARTNER.Plural}</Text>
+            <Text style={styles.cardBody}>Towing, fuel, tyres and more. Sign in with the email Towber invited and we’ll send you a one-time link.</Text>
             <TextInput
               accessibilityLabel="Email address"
               autoCapitalize="none"
@@ -110,15 +115,23 @@ export default function SignInScreen() {
               returnKeyType="send"
               style={styles.input}
               value={email}
-              onSubmitEditing={() => { void sendMagicLink(); }}
+              onSubmitEditing={() => { void sendMagicLink(false); }}
             />
             <Pressable
               accessibilityRole="button"
               disabled={actionsDisabled}
-              onPress={() => { void sendMagicLink(); }}
+              onPress={() => { void sendMagicLink(false); }}
               style={({ pressed }) => [styles.darkButton, pressed && styles.pressed, actionsDisabled && styles.disabled]}
             >
               {sendingLink ? <ActivityIndicator color="#FFFFFF" /> : <Text style={styles.darkText}>Email me a sign-in link</Text>}
+            </Pressable>
+            <Pressable
+              accessibilityRole="button"
+              disabled={actionsDisabled}
+              onPress={() => { void sendMagicLink(true); }}
+              style={({ pressed }) => [styles.applyButton, pressed && styles.pressed, actionsDisabled && styles.disabled]}
+            >
+              <Text style={styles.applyText}>New here? Apply to become a {PARTNER.singular}</Text>
             </Pressable>
           </View>
 
@@ -164,6 +177,8 @@ const styles = StyleSheet.create({
   input: { height: 52, borderRadius: 14, backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: L.border, paddingHorizontal: 16, color: L.text, fontFamily: font.medium, fontSize: 16 },
   darkButton: { height: 54, borderRadius: 999, backgroundColor: '#111827', alignItems: 'center', justifyContent: 'center' },
   darkText: { color: '#FFFFFF', fontFamily: font.bold, fontSize: 16 },
+  applyButton: { height: 48, borderRadius: 999, alignItems: 'center', justifyContent: 'center', borderWidth: 1.5, borderColor: '#111827' },
+  applyText: { color: '#111827', fontFamily: font.semibold, fontSize: 14 },
   pressed: { opacity: 0.85 },
   disabled: { opacity: 0.55 },
   notice: { padding: 14, borderRadius: 16, backgroundColor: L.goSoft, gap: 4 },

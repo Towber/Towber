@@ -1,12 +1,14 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Alert, KeyboardAvoidingView, Linking, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
-import { MaterialCommunityIcons } from '@expo/vector-icons';
+import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { fetchActiveRequest, supabase, type BreakdownType, type ServiceFor } from '../../../src/api';
 import { TopBar } from '../../../src/components/TopBar';
+import { PARTNER } from '../../../src/copy';
+import { STATUS_COPY, type ApplicationStatus } from '../../../src/partnerOnboarding';
 import { SERVICES, getDraft, setDraft } from '../../../src/requestDraft';
 import { font, light as L } from '../../../src/theme';
 
@@ -28,6 +30,38 @@ export default function ServiceScreen() {
   const [color, setColor] = useState(saved?.vehicleColor ?? '');
   const [registration, setRegistration] = useState(saved?.vehicleRegistration ?? '');
   const [passengers, setPassengers] = useState(saved?.passengers ?? 1);
+
+  // After picking a service, glide down to "Who is this for?" so the next step
+  // is in view before the person reaches for Continue.
+  const scrollRef = useRef<ScrollView>(null);
+  const scrollY = useRef(0);
+  const whoForY = useRef(0);
+  const scrollTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => () => { if (scrollTimer.current) clearTimeout(scrollTimer.current); }, []);
+
+  const chooseService = (id: BreakdownType) => {
+    setService(id);
+    if (scrollTimer.current) clearTimeout(scrollTimer.current);
+    // Short delay so the selected tile is seen highlighting first.
+    scrollTimer.current = setTimeout(() => {
+      const target = Math.max(0, whoForY.current - 16);
+      if (scrollY.current < target) scrollRef.current?.scrollTo({ y: target, animated: true });
+    }, 180);
+  };
+
+  // Someone who applied to become a partner can pick their application back up here.
+  const [applicationStatus, setApplicationStatus] = useState<ApplicationStatus | null>(null);
+  useEffect(() => {
+    let mounted = true;
+    void supabase
+      .from('partner_applications')
+      .select('status')
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle()
+      .then(({ data, error }) => { if (mounted && !error) setApplicationStatus((data?.status as ApplicationStatus | undefined) ?? null); });
+    return () => { mounted = false; };
+  }, []);
 
   // An in-flight request should always land on the live map, not a blank form.
   useEffect(() => {
@@ -74,7 +108,24 @@ export default function ServiceScreen() {
       <StatusBar style="light" />
       <TopBar inline onSos={sos} onLogout={() => { void logout(); }} />
       <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-        <ScrollView contentContainerStyle={s.content} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
+        <ScrollView
+          ref={scrollRef}
+          contentContainerStyle={s.content}
+          keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={false}
+          scrollEventThrottle={16}
+          onScroll={(e) => { scrollY.current = e.nativeEvent.contentOffset.y; }}
+        >
+          {applicationStatus && applicationStatus !== 'approved' ? (
+            <Pressable accessibilityRole="button" onPress={() => router.push('/partner/apply')} style={s.applyCard}>
+              <Ionicons name="briefcase-outline" size={20} color={L.go} />
+              <View style={{ flex: 1 }}>
+                <Text style={s.applyTitle}>Your {PARTNER.singular} application</Text>
+                <Text style={s.applySub}>{STATUS_COPY[applicationStatus].title}</Text>
+              </View>
+              <Ionicons name="chevron-forward" size={18} color={L.disabledText} />
+            </Pressable>
+          ) : null}
           <Text style={s.h1}>What do you need?</Text>
           <Text style={s.sub}>Tell us what happened so we can send the right help.</Text>
 
@@ -86,7 +137,7 @@ export default function ServiceScreen() {
                   key={item.id}
                   accessibilityRole="button"
                   accessibilityState={{ selected: on }}
-                  onPress={() => setService(item.id)}
+                  onPress={() => chooseService(item.id)}
                   style={[s.tile, on && s.tileOn]}
                 >
                   <View style={[s.tileIcon, on && { backgroundColor: L.go }]}>
@@ -99,7 +150,7 @@ export default function ServiceScreen() {
             })}
           </View>
 
-          <Text style={s.h2}>Who is this for?</Text>
+          <Text style={s.h2} onLayout={(e) => { whoForY.current = e.nativeEvent.layout.y; }}>Who is this for?</Text>
           <View style={s.segment}>
             {([['self', 'Me'], ['other', 'Someone else']] as const).map(([id, label]) => (
               <Pressable key={id} accessibilityRole="button" accessibilityState={{ selected: serviceFor === id }} onPress={() => setServiceFor(id)} style={[s.segBtn, serviceFor === id && s.segBtnOn]}>
@@ -115,7 +166,7 @@ export default function ServiceScreen() {
           )}
 
           <Text style={s.h2}>Your vehicle</Text>
-          <Text style={s.helper}>Optional, but it helps your driver find you quickly.</Text>
+          <Text style={s.helper}>Optional, but it helps your partner find you quickly.</Text>
           <View style={s.fields}>
             <Field label="Make & model" value={makeModel} onChangeText={setMakeModel} placeholder="e.g. Toyota Corolla" autoCapitalize="words" />
             <View>
@@ -171,6 +222,9 @@ function Field({ label, ...props }: { label: string } & React.ComponentProps<typ
 const s = StyleSheet.create({
   root: { flex: 1, backgroundColor: L.bg },
   content: { padding: 20, paddingBottom: 28 },
+  applyCard: { flexDirection: 'row', alignItems: 'center', gap: 12, padding: 14, borderRadius: 16, backgroundColor: L.goSoft, marginBottom: 16 },
+  applyTitle: { color: L.text, fontFamily: font.bold, fontSize: 14 },
+  applySub: { color: L.textMuted, fontFamily: font.medium, fontSize: 12, marginTop: 2 },
   h1: { color: L.text, fontFamily: font.bold, fontSize: 30, letterSpacing: -0.8 },
   sub: { color: L.textMuted, fontFamily: font.medium, fontSize: 15, marginTop: 6, marginBottom: 18 },
   grid: { flexDirection: 'row', flexWrap: 'wrap', gap: 12 },

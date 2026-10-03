@@ -7,9 +7,10 @@ const icons: Record<VehicleType, keyof typeof MaterialCommunityIcons.glyphMap> =
   standard_tow: 'tow-truck',
   heavy_duty: 'truck-cargo-container',
   winch_recovery: 'hook',
+  roadside_unit: 'car-wrench',
 };
 export const typeLabel: Record<VehicleType, string> = {
-  flatbed_rollback: 'Flatbed', standard_tow: 'Light Tow', heavy_duty: 'Heavy Duty', winch_recovery: 'Winch Recovery',
+  flatbed_rollback: 'Flatbed', standard_tow: 'Light Tow', heavy_duty: 'Heavy Duty', winch_recovery: 'Winch Recovery', roadside_unit: 'Roadside Unit',
 };
 
 export const TruckIcon = ({ type, size = 24, color }: { type: VehicleType; size?: number; color: string }) => (
