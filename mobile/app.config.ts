@@ -61,6 +61,8 @@ const config: ExpoConfig = {
         iosGoogleMapsApiKey: process.env.GOOGLE_MAPS_IOS_API_KEY,
       },
     ],
+    // Playback only (partner new-job alert). Disable the microphone permissions the plugin adds by default.
+    ['expo-audio', { microphonePermission: false, recordAudioAndroid: false }],
     './plugins/with-android-gradle-memory',
   ],
   extra: {
