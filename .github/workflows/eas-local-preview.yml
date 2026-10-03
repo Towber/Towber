@@ -1,0 +1,62 @@
+name: EAS Local Android Preview
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: mobile/package-lock.json
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+        with:
+          packages: platform-tools
+
+      - name: Install Android platform, build tools, NDK and CMake
+        run: sdkmanager --install "platforms;android-36" "build-tools;36.0.0" "ndk;27.1.12297006" "cmake;3.22.1"
+
+      - name: Setup Expo EAS
+        uses: expo/expo-github-action@v8
+        with:
+          eas-version: latest
+          packager: npm
+          token: ${{ secrets.EXPO_TOKEN }}
+
+      - name: Install dependencies
+        working-directory: mobile
+        run: npm ci
+
+      - name: Run EAS local Android preview build
+        working-directory: mobile
+        env:
+          EAS_LOCAL_BUILD_ARTIFACTS_DIR: ${{ runner.temp }}/towber-local-artifacts
+        run: |
+          mkdir -p "$EAS_LOCAL_BUILD_ARTIFACTS_DIR"
+          npx eas-cli@latest build --local --platform android --profile preview --non-interactive
+
+      - name: Upload preview APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: towber-android-preview-local-${{ github.sha }}
+          path: ${{ runner.temp }}/towber-local-artifacts/*.apk
+          if-no-files-found: error
+          retention-days: 14
