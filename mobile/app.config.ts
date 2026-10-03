@@ -61,6 +61,7 @@ const config: ExpoConfig = {
         iosGoogleMapsApiKey: process.env.GOOGLE_MAPS_IOS_API_KEY,
       },
     ],
+    './plugins/with-android-gradle-memory',
   ],
   extra: {
     eas: {

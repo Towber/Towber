@@ -9,6 +9,7 @@ permissions:
 jobs:
   build:
     runs-on: ubuntu-latest
+    timeout-minutes: 45
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -49,6 +50,9 @@ jobs:
         working-directory: mobile
         env:
           EAS_LOCAL_BUILD_ARTIFACTS_DIR: ${{ runner.temp }}/towber-local-artifacts
+          EAS_LOCAL_BUILD_WORKINGDIR: ${{ runner.temp }}/towber-eas-local-work
+          EAS_LOCAL_BUILD_SKIP_CLEANUP: '1'
+          TOWBER_LOCAL_ANDROID_BUILD: '1'
         run: |
           mkdir -p "$EAS_LOCAL_BUILD_ARTIFACTS_DIR"
           npx eas-cli@latest build --local --platform android --profile preview --non-interactive
