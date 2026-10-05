@@ -10,6 +10,7 @@ import { sendDriverLocation } from './api';
 export async function startDriverLocationStream(
   vehicleId: string,
   onError?: (error: Error) => void,
+  onFix?: (fix: { latitude: number; longitude: number }) => void,
 ): Promise<() => void> {
   const permission = await Location.requestForegroundPermissionsAsync();
   if (permission.status !== 'granted') {
@@ -24,6 +25,7 @@ export async function startDriverLocationStream(
       distanceInterval: 1,
     },
     (fix) => {
+      onFix?.({ latitude: fix.coords.latitude, longitude: fix.coords.longitude });
       if (sending) return;
       sending = true;
       const rawHeading = fix.coords.heading;

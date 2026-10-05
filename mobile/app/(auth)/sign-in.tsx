@@ -82,7 +82,7 @@ export default function SignInScreen() {
       <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
         <View style={styles.content}>
           <View style={styles.header}>
-            <Image accessibilityLabel="Towber logo" source={require('../../assets/images/towber-mark.png')} style={styles.logo} />
+            <Image accessibilityLabel="Towber logo" source={require('../../assets/images/towber-icon-rounded-512.png')} resizeMode="contain" style={styles.logo} />
             <Text style={styles.brand}>Towber</Text>
             <Text style={styles.tagline}>Roadside help, when you need it.</Text>
           </View>
@@ -167,7 +167,7 @@ const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: L.bg },
   content: { flex: 1, justifyContent: 'center', paddingHorizontal: 18, gap: 10 },
   header: { alignItems: 'center', marginBottom: 2 },
-  logo: { width: 58, height: 58, marginBottom: 7 },
+  logo: { width: 76, height: 76, marginBottom: 8 },
   brand: { color: L.text, fontFamily: font.bold, fontSize: 30, letterSpacing: -1 },
   tagline: { color: L.textMuted, fontFamily: font.medium, fontSize: 13, marginTop: 2 },
   card: { padding: 14, borderRadius: 18, backgroundColor: L.surfaceRaised, gap: 8 },

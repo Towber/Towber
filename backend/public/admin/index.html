@@ -1,0 +1,310 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="robots" content="noindex,nofollow">
+<meta name="theme-color" content="#161A1D">
+<title>Towber Admin</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%23222629'/%3E%3Cpath d='M32 10c-8.4 0-15 6.8-15 15 0 10 9.4 18 15 29 5.6-11 15-19 15-29 0-8.2-6.6-15-15-15z' fill='%23FFB300'/%3E%3C/svg%3E">
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+:root{--ink:#161A1D;--ink2:#23282C;--paper:#F6F4EF;--card:#fff;--line:rgba(22,26,29,.09);--text:#161A1D;--mute:#68717A;--amber:#FFB300;--amber-d:#855600;--amber-bg:#FFF3D1;--green:#1B7A4B;--green-bg:#E2F3EA;--red:#C0352E;--red-bg:#FBE6E4;--blue:#1D5FA8;--blue-bg:#E3EEF9;--grey-bg:#ECEDEE;--r:16px;--safe:env(safe-area-inset-bottom,0px)}
+*{box-sizing:border-box;margin:0}
+html,body{height:100%}
+body{font:15px/1.45 "Plus Jakarta Sans",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;color:var(--text);background:var(--paper);-webkit-font-smoothing:antialiased}
+body.lock{overflow:hidden}
+button,input,select,textarea{font:inherit;color:inherit}
+h1{font-size:24px;letter-spacing:-.4px;font-weight:800}
+h2{font-size:16px;font-weight:700;letter-spacing:-.1px}
+.mute{color:var(--mute)}.sm{font-size:13px}.xs{font-size:12px}.b{font-weight:700}
+.shell{min-height:100%}
+.top{position:sticky;top:0;z-index:20;background:var(--ink);color:#fff;padding:10px 14px;display:flex;align-items:center;gap:10px}
+.top .brand{display:flex;align-items:center;gap:10px;font-weight:800;letter-spacing:-.2px}
+.top svg.logo{width:32px;height:32px;border-radius:9px}
+.top .who{margin-left:auto;font-size:12px;opacity:.7;max-width:46%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+nav{position:sticky;top:52px;z-index:19;background:var(--ink);display:flex;gap:4px;overflow-x:auto;padding:0 10px 10px;scrollbar-width:none}
+nav::-webkit-scrollbar{display:none}
+nav button{flex:none;display:flex;align-items:center;gap:7px;border:0;background:transparent;color:#B9C0C6;padding:9px 13px;border-radius:12px;font-weight:600;font-size:14px;cursor:pointer;white-space:nowrap}
+nav button svg{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+nav button.on{background:var(--amber);color:#1E2022}
+nav .bdg{background:var(--red);color:#fff;border-radius:99px;font-size:11px;padding:1px 7px;font-weight:700}
+nav button.on .bdg{background:#1E2022;color:var(--amber)}
+main{padding:18px 14px 90px;max-width:1080px;margin:0 auto}
+.head{display:flex;align-items:flex-end;justify-content:space-between;gap:12px;margin-bottom:16px;flex-wrap:wrap}
+.head p{color:var(--mute);font-size:14px;margin-top:2px}
+.grid{display:grid;gap:12px}
+.g2{grid-template-columns:repeat(2,1fr)}.g4{grid-template-columns:repeat(2,1fr)}.g3{grid-template-columns:repeat(3,1fr)}
+.card{background:var(--card);border:1px solid var(--line);border-radius:var(--r);padding:16px}
+.stat{padding:14px 16px}
+.stat .n{font-size:28px;font-weight:800;letter-spacing:-.8px;line-height:1.1;margin-top:4px;font-variant-numeric:tabular-nums}
+.stat .l{font-size:12.5px;color:var(--mute);font-weight:600}
+.stat.hot{background:var(--amber-bg);border-color:#F2D58A}
+.stat.bad{background:var(--red-bg);border-color:#F0B9B5}
+.chips{display:flex;gap:8px;overflow-x:auto;margin-bottom:14px;padding-bottom:2px;scrollbar-width:none}
+.chip{flex:none;border:1px solid var(--line);background:#fff;border-radius:99px;padding:7px 14px;font-weight:600;font-size:13.5px;cursor:pointer}
+.chip.on{background:var(--ink);color:#fff;border-color:var(--ink)}
+.row{display:flex;gap:12px;align-items:center;padding:14px 16px;background:var(--card);border:1px solid var(--line);border-radius:var(--r);margin-bottom:10px;cursor:pointer;text-align:left;width:100%}
+.row:hover{border-color:rgba(22,26,29,.25)}
+.row .main{flex:1;min-width:0}
+.row .t{font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.row .s{color:var(--mute);font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.pill{display:inline-flex;align-items:center;gap:5px;padding:3px 10px;border-radius:99px;font-size:12px;font-weight:700;white-space:nowrap}
+.p-amber{background:var(--amber-bg);color:var(--amber-d)}.p-green{background:var(--green-bg);color:var(--green)}.p-red{background:var(--red-bg);color:var(--red)}.p-blue{background:var(--blue-bg);color:var(--blue)}.p-grey{background:var(--grey-bg);color:#4A5157}
+.tags{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px}
+.btn{border:1px solid var(--line);background:#fff;border-radius:12px;padding:10px 16px;font-weight:700;font-size:14px;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;gap:6px;text-decoration:none;color:var(--text)}
+.btn:disabled{opacity:.5;cursor:default}
+.btn.go{background:var(--green);border-color:var(--green);color:#fff}
+.btn.warn{background:var(--amber);border-color:var(--amber);color:#1E2022}
+.btn.bad{background:#fff;border-color:#E3A29E;color:var(--red)}
+.btn.dark{background:var(--ink);border-color:var(--ink);color:#fff}
+.btn.s{padding:6px 11px;font-size:13px;border-radius:10px}
+.stars{color:var(--amber);letter-spacing:1px;font-size:15px;white-space:nowrap}.stars i{color:#D9DCDF;font-style:normal}
+label{display:block;font-size:12.5px;font-weight:700;color:var(--mute);margin-bottom:10px}
+input,select,textarea{display:block;width:100%;margin-top:5px;padding:11px 12px;border:1px solid rgba(22,26,29,.18);border-radius:11px;background:#fff;font-weight:500;color:var(--text)}
+input:focus,select:focus,textarea:focus{outline:2px solid var(--amber);outline-offset:1px}
+textarea{min-height:84px;resize:vertical}
+.kv{display:grid;grid-template-columns:130px 1fr;gap:6px 12px;font-size:14px}
+.kv dt{color:var(--mute);font-weight:600}.kv dd{margin:0;overflow-wrap:anywhere}
+.sec{margin:22px 0 10px}
+.doc{display:flex;gap:12px;align-items:center;padding:12px 0;border-top:1px solid var(--line)}
+.doc:first-of-type{border-top:0}
+.thumb{width:54px;height:54px;border-radius:10px;background:var(--grey-bg);object-fit:cover;flex:none;display:grid;place-items:center;font-size:11px;font-weight:800;color:#4A5157;overflow:hidden}
+.scrim{position:fixed;inset:0;background:rgba(22,26,29,.5);z-index:40}
+.sheet{position:fixed;z-index:41;background:var(--paper);overflow-y:auto;left:0;right:0;bottom:0;top:36px;border-radius:22px 22px 0 0;padding:6px 16px calc(28px + var(--safe))}
+.sheet .bar{position:sticky;top:0;background:var(--paper);display:flex;align-items:center;justify-content:space-between;gap:10px;padding:14px 0 10px;z-index:2}
+.x{border:0;background:var(--grey-bg);width:34px;height:34px;border-radius:50%;font-size:20px;cursor:pointer;line-height:1}
+.actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:12px}
+.actions .btn{flex:1 1 140px}
+.toast{position:fixed;left:50%;bottom:calc(20px + var(--safe));transform:translateX(-50%);background:var(--ink);color:#fff;padding:12px 18px;border-radius:14px;font-weight:600;z-index:60;max-width:90vw;box-shadow:0 8px 30px rgba(0,0,0,.25)}
+.toast.bad{background:var(--red)}
+.empty{text-align:center;color:var(--mute);padding:36px 16px}
+.sk{height:68px;border-radius:var(--r);background:linear-gradient(90deg,#ECEAE4,#F4F2ED,#ECEAE4);background-size:200% 100%;animation:sh 1.2s infinite;margin-bottom:10px}
+@keyframes sh{to{background-position:-200% 0}}
+.login{min-height:100%;display:grid;place-items:center;padding:20px;background:radial-gradient(1200px 500px at 50% -10%,#2B3035,var(--ink))}
+.login .card{width:100%;max-width:390px;padding:28px}
+.login svg.logo{width:64px;height:64px;border-radius:17px;display:block;margin:0 auto 14px}
+.err{color:var(--red);font-weight:600;font-size:13.5px;margin-top:10px;min-height:18px}
+table{width:100%;border-collapse:collapse;font-size:13.5px}
+td,th{text-align:left;padding:9px 6px;border-top:1px solid var(--line);vertical-align:top}
+th{color:var(--mute);font-size:12px;font-weight:700}
+.scroll{overflow-x:auto}
+.note{background:var(--amber-bg);border:1px solid #F2D58A;border-radius:12px;padding:10px 12px;font-size:13.5px;margin:10px 0}
+@media(min-width:900px){
+ .shell{display:grid;grid-template-columns:236px 1fr}
+ .top{position:sticky;top:0;height:100vh;flex-direction:column;align-items:stretch;padding:22px 14px;gap:18px;grid-row:1/3;z-index:20}
+ .top .who{margin:auto 0 0;max-width:none}
+ nav{position:fixed;top:78px;left:0;width:236px;flex-direction:column;overflow:visible;padding:0 14px;background:transparent;z-index:21}
+ nav button{padding:11px 13px}
+ main{padding:30px 30px 60px;width:100%}
+ .g4{grid-template-columns:repeat(4,1fr)}
+ .sheet{left:auto;top:0;width:min(600px,100vw);border-radius:22px 0 0 22px;padding:6px 24px 40px}
+ .toast{bottom:24px}
+}
+</style>
+</head>
+<body>
+<div id="app"></div>
+<script>
+const LOGO='<svg class="logo" viewBox="0 0 1024 1024" aria-label="Towber"><rect width="1024" height="1024" rx="228" fill="#222629"/><path d="M512 170C378 170 270 278 270 412c0 160 150 290 242 450 92-160 242-290 242-450C754 278 646 170 512 170Z" fill="#FFB300"/><g fill="none" stroke="#1E2022" stroke-width="44" stroke-linecap="round" stroke-linejoin="round"><circle cx="470" cy="296" r="30" stroke-width="30"/><path d="M470 346V410C470 484 522 530 580 530C632 530 664 492 664 446"/></g><path d="M664 446l-34 0 34-52 34 52z" fill="#1E2022"/></svg>';
+const IC={overview:'<path d="M3 11l9-8 9 8v9a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"/>',applications:'<path d="M9 4h6v3H9zM7 5H5a1 1 0 0 0-1 1v14a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1V6a1 1 0 0 0-1-1h-2"/><path d="M9 14l2 2 4-4"/>',partners:'<circle cx="9" cy="8" r="3.5"/><path d="M2.5 20c.6-3.6 3.2-5.5 6.5-5.5s5.9 1.9 6.5 5.5M16 4.6a3.5 3.5 0 0 1 0 6.8M18 14.8c2 .6 3.2 2.3 3.5 5"/>',ratings:'<path d="M12 3l2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.9 1-6.1L3.2 9.5l6.1-.9z"/>',requests:'<path d="M8 6h13M8 12h13M8 18h13M3.5 6h.01M3.5 12h.01M3.5 18h.01"/>',pricing:'<path d="M20 12l-8 8-9-9V3h8z"/><circle cx="7.5" cy="7.5" r="1.2"/>',settings:'<circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9L7 7M17 17l2.1 2.1M4.9 19.1L7 17M17 7l2.1-2.1"/>'};
+const TABS=[['overview','Overview'],['applications','Applications'],['partners','Partners'],['ratings','Ratings'],['requests','Requests'],['pricing','Pricing'],['settings','Team & log']];
+const SVC={flatbed:'Towing',jumpstart:'Jump start',lockout:'Lockout',fuel:'Fuel delivery',tyre:'Tyre change',repair:'Minor repair'};
+const DOCS={id_document:'ID / passport',drivers_license:"Driver's licence",prdp:'PrDP',vehicle_license_disc:'Vehicle licence disc',certificate_of_fitness:'Certificate of Fitness',towing_insurance:'Towing insurance',towing_permit:'Towing permit',trade_certificate:'Trade certificate',vehicle_photo:'Vehicle photo',equipment_photo:'Equipment photo'};
+const TIER={tow_operator:'Tow operator',roadside_responder:'Roadside responder'};
+const VT={flatbed_rollback:'Flatbed',standard_tow:'Standard tow',heavy_duty:'Heavy duty',winch_recovery:'Winch recovery',roadside_unit:'Roadside unit'};
+const $=(s,r=document)=>r.querySelector(s);
+const E=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const R=n=>n==null||n===''?'—':'R '+Math.round(Number(n)).toLocaleString('en-ZA').replace(/\s/g,' ');
+const D=d=>d?new Date(d).toLocaleString('en-ZA',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'}):'—';
+const stars=n=>'<span class="stars" aria-label="'+n+' of 5">'+'★'.repeat(n)+'<i>'+'★'.repeat(5-n)+'</i></span>';
+const pill=(t,c)=>'<span class="pill p-'+c+'">'+E(t)+'</span>';
+const APPST={submitted:['Waiting for review','amber'],needs_info:['Changes requested','blue'],approved:['Approved','green'],rejected:['Declined','red']};
+const REQST={pending:['Waiting','amber'],accepted:['Accepted','blue'],en_route:['En route','blue'],arrived:['Arrived','blue'],completed:['Completed','green'],cancelled:['Cancelled','grey'],declined:['Declined','grey'],expired:['Expired','grey']};
+const st=(map,k)=>pill((map[k]||[k,'grey'])[0],(map[k]||[k,'grey'])[1]);
+
+let S=null,tab='overview',F={app:'open',rate:'visible',rmax:5,req:'all',company:null},CACHE={},nav={};
+try{S=JSON.parse(localStorage.getItem('tb_admin')||'null')}catch{}
+const save=s=>{S=s;s?localStorage.setItem('tb_admin',JSON.stringify(s)):localStorage.removeItem('tb_admin')};
+
+async function refresh(){try{const r=await fetch('/api/admin/refresh',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({refreshToken:S.refreshToken})});if(!r.ok)return false;save(await r.json());return true}catch{return false}}
+async function api(path,o={},retry=true){
+  if(S&&S.expiresAt&&S.expiresAt*1000-Date.now()<60000)await refresh();
+  const r=await fetch(path,{method:o.method||'GET',headers:{'Content-Type':'application/json',...(S?{Authorization:'Bearer '+S.accessToken}:{})},body:o.body?JSON.stringify(o.body):undefined});
+  if(r.status===401&&S&&retry){if(await refresh())return api(path,o,false);logout();throw new Error('Please sign in again.')}
+  const j=await r.json().catch(()=>({}));
+  if(!r.ok)throw new Error(j.error||'Something went wrong ('+r.status+')');
+  return j;
+}
+function toast(m,bad){const t=document.createElement('div');t.className='toast'+(bad?' bad':'');t.textContent=m;t.setAttribute('role','status');document.body.appendChild(t);setTimeout(()=>t.remove(),bad?5200:3200)}
+function logout(){save(null);CACHE={};closeSheet();render()}
+async function run(b,fn){if(b)b.disabled=true;try{await fn()}catch(e){toast(e.message,true)}finally{if(b)b.disabled=false}}
+const num=id=>{const v=parseFloat(String($('#'+id).value).replace(',','.'));return Number.isFinite(v)?v:NaN};
+
+/* ---------- shell ---------- */
+function render(){
+  const app=$('#app');
+  if(!S){
+    app.innerHTML='<div class="login"><div class="card">'+LOGO+'<h1 style="text-align:center;font-size:22px">Towber Admin</h1><p class="mute sm" style="text-align:center;margin:4px 0 20px">Sign in with your administrator account</p><label>Email<input id="em" type="email" autocomplete="username" inputmode="email"></label><label>Password<input id="pw" type="password" autocomplete="current-password"></label><button class="btn dark" id="lg" data-a="login" style="width:100%;margin-top:4px">Sign in</button><p class="err" id="lerr" role="alert"></p></div></div>';
+    $('#pw').addEventListener('keydown',e=>{if(e.key==='Enter')$('#lg').click()});
+    return;
+  }
+  app.innerHTML='<div class="shell"><header class="top"><div class="brand">'+LOGO+'<span>Towber Admin</span></div><span class="who">'+E(S.email)+' · <a href="#" data-a="logout" style="color:#FFB300">Sign out</a></span></header><nav aria-label="Sections">'+TABS.map(([k,l])=>'<button data-a="tab" data-t="'+k+'" class="'+(k===tab?'on':'')+'"><svg viewBox="0 0 24 24" aria-hidden="true">'+IC[k]+'</svg>'+l+(k==='applications'&&nav.pending?'<span class="bdg">'+nav.pending+'</span>':'')+'</button>').join('')+'</nav><main id="main"></main></div>';
+  load();
+}
+async function load(){
+  const m=$('#main');if(!m)return;
+  m.innerHTML='<div class="sk"></div><div class="sk"></div><div class="sk"></div>';
+  document.querySelectorAll('nav button').forEach(b=>b.classList.toggle('on',b.dataset.t===tab));
+  try{m.innerHTML=await VIEW[tab]()}catch(e){m.innerHTML='<div class="empty"><p class="b">Could not load this page</p><p class="sm">'+E(e.message)+'</p><p style="margin-top:14px"><button class="btn" data-a="reload">Try again</button></p></div>'}
+}
+async function pendingBadge(){try{const s=await api('/api/admin/stats');nav.pending=s.applications_pending||0;const b=$('nav [data-t="applications"]');if(b){b.querySelector('.bdg')?.remove();if(nav.pending)b.insertAdjacentHTML('beforeend','<span class="bdg">'+nav.pending+'</span>')}return s}catch{return null}}
+
+/* ---------- views ---------- */
+const head=(t,p,extra='')=>'<div class="head"><div><h1>'+t+'</h1>'+(p?'<p>'+p+'</p>':'')+'</div>'+extra+'</div>';
+const chips=(key,opts)=>'<div class="chips">'+opts.map(([v,l])=>'<button class="chip '+(F[key]===v?'on':'')+'" data-a="chip" data-k="'+key+'" data-v="'+v+'">'+l+'</button>').join('')+'</div>';
+const VIEW={
+async overview(){
+  const s=await pendingBadge()||await api('/api/admin/stats');
+  const d=s.by_day||[],mx=Math.max(1,...d.map(x=>x.total)),bw=560/Math.max(1,d.length);
+  const bars=d.map((x,i)=>{const h=x.total/mx*110,c=x.completed/mx*110,X=i*bw+6;return '<rect x="'+X+'" y="'+(125-h)+'" width="'+(bw-12)+'" height="'+h+'" rx="4" fill="#E7E3D8"/><rect x="'+X+'" y="'+(125-c)+'" width="'+(bw-12)+'" height="'+c+'" rx="4" fill="#1B7A4B"/><text x="'+(X+(bw-12)/2)+'" y="146" text-anchor="middle" font-size="10" fill="#68717A">'+x.day.slice(8)+'</text>'}).join('');
+  const tile=(l,n,cls='',a='')=>'<div class="card stat '+cls+'" '+a+'><div class="l">'+l+'</div><div class="n">'+n+'</div></div>';
+  return head('Overview','Live picture of Towber across South Africa')+
+   '<div class="grid g4">'+
+   tile('Applications waiting',s.applications_pending,s.applications_pending?'hot':'','')+
+   tile('Verified partners',s.partners_verified+' <span class="mute sm b">of '+s.partners_total+'</span>')+
+   tile('Vehicles online',s.vehicles_online)+
+   tile('Open requests',s.requests_open)+
+   tile('Completed (30 days)',s.completed_30d)+
+   tile('Job value (30 days)',R(s.job_value_30d))+
+   tile('Average rating',s.rating_avg?(+s.rating_avg).toFixed(1)+' <span class="mute sm b">('+s.rating_count+')</span>':'—')+
+   tile('Low ratings (7 days)',s.low_ratings_7d,s.low_ratings_7d?'bad':'')+
+   '</div>'+(s.applications_pending||s.applications_needs_info?'<div class="actions"><button class="btn warn" data-a="tab" data-t="applications">Review '+s.applications_pending+' waiting application'+(s.applications_pending===1?'':'s')+'</button>'+(s.low_ratings_7d?'<button class="btn bad" data-a="lowrate">See low ratings</button>':'')+'</div>':'')+
+   '<div class="card" style="margin-top:14px"><h2>Requests, last 14 days</h2><p class="xs mute">Grey = all requests · green = completed</p><svg viewBox="0 0 560 152" style="width:100%;margin-top:8px" role="img" aria-label="Requests per day">'+bars+'</svg></div>';
+},
+
+async applications(){
+  const {applications:a}=await api('/api/admin/applications?status='+F.app);
+  await pendingBadge();
+  return head('Partner applications','Check documents, then approve or decline')+
+   chips('app',[['open','Needs action'],['approved','Approved'],['rejected','Declined'],['all','All']])+
+   (a.length?a.map(x=>'<button class="row" data-a="openapp" data-id="'+x.id+'"><div class="main"><div class="t">'+E(x.business_name)+'</div><div class="s">'+E(x.email||'No email')+' · '+E(TIER[x.partner_tier]||x.partner_tier)+' · '+x.documents+' document'+(x.documents===1?'':'s')+'</div><div class="tags">'+(x.capabilities||[]).map(c=>pill(SVC[c]||c,'grey')).join('')+'</div></div><div style="text-align:right">'+st(APPST,x.status)+'<div class="xs mute" style="margin-top:6px">'+D(x.submitted_at)+'</div></div></button>').join(''):'<div class="empty"><p class="b">Nothing here</p><p class="sm">No applications match this filter.</p></div>');
+},
+
+async partners(){
+  const {partners:p}=await api('/api/admin/partners');
+  CACHE.partners=p;
+  return head('Partners',p.length+' registered')+
+   (p.length?p.map(x=>'<button class="row" data-a="openpartner" data-id="'+x.company_id+'"><div class="main"><div class="t">'+E(x.company_name)+'</div><div class="s">'+E(x.owner_email||x.contact_phone||'')+' · '+x.vehicles_online+'/'+x.vehicles+' vehicles online · '+x.jobs_completed+'/'+x.jobs_total+' jobs done</div><div class="tags">'+(x.services||[]).map(c=>pill(SVC[c]||c,'grey')).join('')+'</div></div><div style="text-align:right">'+pill(x.is_verified?'Verified':'Suspended',x.is_verified?'green':'red')+'<div style="margin-top:6px">'+(x.rating_count?stars(Math.round(x.rating_avg))+' <span class="xs mute">'+(+x.rating_avg).toFixed(1)+' ('+x.rating_count+')</span>':'<span class="xs mute">No ratings</span>')+'</div></div></button>').join(''):'<div class="empty">No partners yet. Approve an application to create one.</div>');
+},
+
+async ratings(){
+  const q='?visibility='+F.rate+'&max='+F.rmax+(F.company?'&companyId='+F.company:'');
+  const [{ratings:r},s]=await Promise.all([api('/api/admin/ratings'+q),api('/api/admin/stats')]);
+  return head('Ratings',s.rating_count?'Average '+(+s.rating_avg).toFixed(2)+' from '+s.rating_count+' rating'+(s.rating_count===1?'':'s'):'No ratings yet')+
+   (F.company?'<div class="note">Showing one partner only. <button class="btn s" data-a="allpartners">Show all partners</button></div>':'')+chips('rate',[['visible','Visible'],['hidden','Hidden'],['all','All']])+chips('rmax',[[5,'All stars'],[3,'3 stars or less'],[2,'2 stars or less']])+
+   (r.length?r.map(x=>'<div class="card" style="margin-bottom:10px"><div style="display:flex;justify-content:space-between;gap:10px;align-items:center">'+stars(x.rating)+'<span class="xs mute">'+D(x.created_at)+'</span></div>'+(x.comment?'<p style="margin:8px 0;font-size:15px">“'+E(x.comment)+'”</p>':'<p class="mute sm" style="margin:8px 0">No comment left</p>')+'<div style="display:flex;justify-content:space-between;gap:10px;align-items:center;flex-wrap:wrap"><span class="sm mute">'+E(x.company_name||'Unknown partner')+(x.vehicle_registration?' · '+E(x.vehicle_registration):'')+' · by '+E(x.rater_email||'guest')+'</span><span>'+(x.admin_hidden?pill('Hidden','grey')+' ':'')+'<button class="btn s" data-a="hide" data-id="'+x.rating_id+'" data-h="'+(x.admin_hidden?0:1)+'">'+(x.admin_hidden?'Show again':'Hide')+'</button></span></div></div>').join(''):'<div class="empty">No ratings match this filter.</div>');
+},
+
+async requests(){
+  const {requests:r}=await api('/api/admin/requests?status='+F.req);
+  return head('Requests','Most recent 150')+chips('req',[['all','All'],['open','Open'],['completed','Completed'],['closed','Cancelled / expired']])+
+   (r.length?'<div class="card scroll"><table><tr><th>Status</th><th>Service</th><th>Partner</th><th>Price</th><th>When</th></tr>'+r.map(x=>'<tr><td>'+st(REQST,x.status)+'</td><td>'+E(SVC[x.breakdown_type]||x.breakdown_type||'—')+'<div class="xs mute">'+E(x.contact_name||'')+' '+E(x.vehicle_registration||'')+'</div></td><td>'+E(x.companyName||'—')+'</td><td class="b">'+R(x.final_price??x.estimated_price_max)+(x.fare_surcharge_label?'<div class="xs mute">'+E(x.fare_surcharge_label)+'</div>':'')+'</td><td class="xs mute">'+D(x.created_at)+'</td></tr>').join('')+'</table></div>':'<div class="empty">No requests match this filter.</div>');
+},
+
+async pricing(){
+  const p=CACHE.pricing=await api('/api/admin/pricing');
+  const fee=c=>(p.flatRates.find(x=>x.service_code===c)||{}).flat_fee_zar;
+  const ah=p.afterHours||{after_hours_start:'20:00:00',after_hours_end:'05:00:00',after_hours_multiplier:1};
+  return head('Pricing','Platform defaults. A partner can override these on its own page.')+
+   '<div class="card"><h2>Flat fees</h2><p class="sm mute" style="margin:2px 0 12px">A service with no price is not offered to motorists. Leave blank to remove.</p>'+
+   p.services.map(c=>'<div style="display:flex;gap:10px;align-items:flex-end;margin-bottom:6px"><label style="flex:1;margin:0">'+SVC[c]+' (R)<input id="ff-'+c+'" inputmode="decimal" value="'+E(fee(c)??'')+'" placeholder="Not set"></label><button class="btn dark" data-a="saveflat" data-c="'+c+'" data-co="">Save</button></div>').join('')+'</div>'+
+   '<div class="card" style="margin-top:14px"><h2>After-hours surcharge</h2><p class="sm mute" style="margin:2px 0 12px">South African time. A multiplier of 1.00 means no surcharge.</p><div class="grid g3"><label>From<input id="ah-s" type="time" value="'+E(ah.after_hours_start.slice(0,5))+'"></label><label>Until<input id="ah-e" type="time" value="'+E(ah.after_hours_end.slice(0,5))+'"></label><label>Multiplier<input id="ah-m" inputmode="decimal" value="'+E(ah.after_hours_multiplier)+'"></label></div><button class="btn dark" data-a="saveah">Save after-hours rate</button></div>'+
+   '<div class="note">Towing is priced per partner (call-out + per-km + minimum). Open a partner under <b>Partners</b> to set it.</div>';
+},
+
+async settings(){
+  const [t,l]=await Promise.all([api('/api/admin/team'),api('/api/admin/audit')]);
+  return head('Team & activity','Who can use this console, and what they changed')+
+   '<div class="card"><h2>Administrators</h2><div style="margin-top:8px">'+t.admins.map(a=>'<div class="doc"><div style="flex:1;min-width:0"><div class="b" style="overflow:hidden;text-overflow:ellipsis">'+E(a.email)+(a.email===S.email?' <span class="xs mute">(you)</span>':'')+'</div><div class="xs mute">Added '+D(a.created_at)+'</div></div>'+(a.email===S.email?'':'<button class="btn bad s" data-a="rmadmin" data-id="'+a.user_id+'" data-e="'+E(a.email)+'">Remove</button>')+'</div>').join('')+'</div><label style="margin-top:12px">Add an administrator by email<input id="ne" type="email" inputmode="email" placeholder="name@company.co.za"></label><button class="btn dark" data-a="addadmin">Add administrator</button><p class="xs mute" style="margin-top:8px">They must already have a Towber account (they sign in with a password in this console).</p></div>'+
+   '<div class="card scroll" style="margin-top:14px"><h2>Recent activity</h2>'+(l.log.length?'<table><tr><th>When</th><th>Who</th><th>What</th></tr>'+l.log.map(x=>'<tr><td class="xs mute">'+D(x.created_at)+'</td><td class="sm">'+E((x.admin_email||'').split('@')[0])+'</td><td class="sm">'+E(x.action)+'<div class="xs mute">'+E(x.entity)+'</div></td></tr>').join('')+'</table>':'<p class="mute sm" style="margin-top:8px">Nothing yet.</p>')+'</div>';
+}};
+
+/* ---------- sheets ---------- */
+function openSheet(html){closeSheet();document.body.classList.add('lock');document.body.insertAdjacentHTML('beforeend','<div class="scrim" data-a="closeSheet"></div><aside class="sheet" role="dialog" aria-modal="true"><div class="bar"><span></span><button class="x" data-a="closeSheet" aria-label="Close">×</button></div><div id="sheetBody">'+html+'</div></aside>');}
+function closeSheet(){document.querySelectorAll('.scrim,.sheet').forEach(n=>n.remove());document.body.classList.remove('lock')}
+document.addEventListener('keydown',e=>{if(e.key==='Escape')closeSheet()});
+
+async function openApp(id){
+  openSheet('<div class="sk"></div><div class="sk"></div>');
+  const {application:a,profile:p,required:req,documents:docs}=await api('/api/admin/applications/'+id);
+  const byType={};docs.forEach(d=>byType[d.document_type]=d);
+  const types=[...new Set([...req,...docs.map(d=>d.document_type)])];
+  const missing=req.filter(t=>!byType[t]);
+  const docRow=t=>{const d=byType[t];const lbl=DOCS[t]||t;
+    if(!d)return '<div class="doc"><div class="thumb">—</div><div style="flex:1"><div class="b">'+lbl+'</div><div class="xs mute">Required</div></div>'+pill('Missing','red')+'</div>';
+    const img=/^image\//.test(d.content_type)&&d.url;
+    return '<div class="doc">'+(img?'<img class="thumb" src="'+E(d.url)+'" alt="" loading="lazy">':'<div class="thumb">PDF</div>')+'<div style="flex:1;min-width:0"><div class="b">'+lbl+(req.includes(t)?'':' <span class="xs mute">(optional)</span>')+'</div><div class="xs mute">'+Math.round(d.file_size_bytes/1024)+' KB'+(d.expires_on?' · expires '+E(d.expires_on):'')+'</div><div style="margin-top:6px;display:flex;gap:6px;flex-wrap:wrap">'+(d.url?'<a class="btn s" href="'+E(d.url)+'" target="_blank" rel="noopener">View</a>':'')+'<button class="btn s" data-a="doc" data-id="'+d.id+'" data-s="approved" data-app="'+id+'">✓ OK</button><button class="btn s bad" data-a="doc" data-id="'+d.id+'" data-s="rejected" data-app="'+id+'">✗ Problem</button></div></div>'+st({approved:['Checked','green'],rejected:['Problem','red'],pending:['Not checked','grey']},d.review_status)+'</div>'};
+  const open=a.status==='submitted';
+  $('#sheetBody').innerHTML='<h1 style="font-size:22px">'+E(a.business_name)+'</h1><div class="tags" style="margin-bottom:6px">'+st(APPST,a.status)+pill(TIER[a.partner_tier]||a.partner_tier,'grey')+'</div>'+
+   '<div class="card sec"><h2 style="margin-bottom:10px">Applicant</h2><dl class="kv"><dt>Name</dt><dd>'+E(p?.full_name||'—')+'</dd><dt>Email</dt><dd>'+E(p?.email||'—')+'</dd><dt>Phone</dt><dd>'+E(a.contact_phone)+'</dd><dt>Registration</dt><dd>'+E(a.company_registration_number||'Individual (none given)')+'</dd><dt>Vehicle</dt><dd>'+E(a.vehicle_registration)+(a.tow_vehicle_type?' · '+E(VT[a.tow_vehicle_type]||a.tow_vehicle_type):'')+'</dd><dt>Services</dt><dd>'+(a.capabilities||[]).map(c=>E(SVC[c]||c)).join(', ')+'</dd><dt>Submitted</dt><dd>'+D(a.submitted_at)+'</dd></dl></div>'+
+   '<div class="card sec"><h2>Documents</h2>'+(missing.length?'<div class="note">'+missing.length+' required document'+(missing.length===1?' is':'s are')+' missing.</div>':'')+types.map(docRow).join('')+'</div>'+
+   (a.review_notes?'<div class="note"><b>Last reviewer note:</b> '+E(a.review_notes)+'</div>':'')+
+   (open?'<div class="card sec"><h2>Your decision</h2><label>Note to the applicant (required to decline or request changes)<textarea id="dn" placeholder="e.g. PrDP photo is blurry. Please upload a clear photo."></textarea></label><div class="actions"><button class="btn go" data-a="approve" data-id="'+id+'">Approve</button><button class="btn warn" data-a="decide" data-d="needs_info" data-id="'+id+'">Request changes</button><button class="btn bad" data-a="decide" data-d="rejected" data-id="'+id+'">Decline</button></div><p class="xs mute" style="margin-top:10px">Approving creates the verified partner, vehicle and services and switches the applicant to the Partner app. Set their prices afterwards under Partners.</p></div>':
+    a.status==='needs_info'?'<div class="note">Waiting for the applicant to fix the issues and resubmit.</div>':'');
+}
+
+async function openPartner(id){
+  openSheet('<div class="sk"></div><div class="sk"></div>');
+  const [d,p]=await Promise.all([api('/api/admin/partners/'+id),CACHE.pricing?Promise.resolve(CACHE.pricing):api('/api/admin/pricing')]);
+  CACHE.pricing=p;CACHE.pd=d;
+  const row=(CACHE.partners||[]).find(x=>x.company_id===id)||{services:[]};
+  const c=d.company,tr=d.towRates;
+  const flatEff=s=>{const o=d.flatRates.find(x=>x.service_code===s),g=p.flatRates.find(x=>x.service_code===s);return o?[o.flat_fee_zar,'partner override']:g?[g.flat_fee_zar,'platform default']:[null,'']};
+  const svcs=(row.services||[]);
+  const warn=[];
+  if(svcs.includes('flatbed')&&!tr.length)warn.push('No towing rate set, so this partner will not be offered for towing.');
+  svcs.filter(s=>s!=='flatbed').forEach(s=>{if(flatEff(s)[0]==null)warn.push(SVC[s]+' has no price, so it is not offered.')});
+  const cls=p.towClasses;
+  $('#sheetBody').innerHTML='<h1 style="font-size:22px">'+E(c.company_name)+'</h1><div class="tags" style="margin-bottom:6px">'+pill(c.is_verified?'Verified':'Suspended',c.is_verified?'green':'red')+svcs.map(s=>pill(SVC[s]||s,'grey')).join('')+'</div>'+
+   '<div class="card sec"><dl class="kv"><dt>Registration</dt><dd>'+E(c.registration_number)+'</dd><dt>Phone</dt><dd>'+E(c.contact_phone||'—')+'</dd><dt>Owner</dt><dd>'+E(row.owner_email||'—')+'</dd><dt>Rating</dt><dd>'+(row.rating_count?stars(Math.round(row.rating_avg))+' '+(+row.rating_avg).toFixed(2)+' ('+row.rating_count+')':'No ratings yet')+'</dd><dt>Jobs</dt><dd>'+(row.jobs_completed||0)+' completed of '+(row.jobs_total||0)+'</dd></dl>'+
+   '<div class="actions">'+(c.is_verified?'<button class="btn bad" data-a="verify" data-id="'+id+'" data-v="0">Suspend partner</button>':'<button class="btn go" data-a="verify" data-id="'+id+'" data-v="1">Re-verify partner</button>')+'<button class="btn" data-a="partnerratings" data-id="'+id+'">See ratings</button></div></div>'+
+   (warn.length?'<div class="note">'+warn.map(E).join('<br>')+'</div>':'')+
+   '<div class="card sec"><h2>Vehicles</h2>'+(d.vehicles.length?d.vehicles.map(v=>'<div class="doc"><div style="flex:1"><div class="b">'+E(v.registration_number)+'</div><div class="xs mute">'+E(VT[v.vehicle_type]||v.vehicle_type)+' · seen '+D(v.updated_at)+'</div></div>'+pill(v.is_active?'Online':'Offline',v.is_active?'green':'grey')+'</div>').join(''):'<p class="mute sm">No vehicles.</p>')+'</div>'+
+   '<div class="card sec"><h2>Towing rate</h2><p class="sm mute" style="margin:2px 0 10px">Price = call-out + per-km × distance, never below the minimum.</p><label>Truck class<select id="tr-c">'+cls.map(k=>'<option value="'+E(k.code)+'">'+E(k.display_name)+'</option>').join('')+'</select></label><div class="grid g3"><label>Call-out (R)<input id="tr-a" inputmode="decimal"></label><label>Per km (R)<input id="tr-k" inputmode="decimal"></label><label>Minimum (R)<input id="tr-m" inputmode="decimal"></label></div><button class="btn dark" data-a="savetow" data-id="'+id+'">Save towing rate</button></div>'+
+   '<div class="card sec"><h2>Flat fees for this partner</h2><p class="sm mute" style="margin:2px 0 10px">Blank = use the platform default.</p>'+p.services.map(s=>{const o=d.flatRates.find(x=>x.service_code===s),e=flatEff(s);return '<div style="display:flex;gap:10px;align-items:flex-end;margin-bottom:6px"><label style="flex:1;margin:0">'+SVC[s]+' (R) <span class="xs">'+(e[0]!=null?'now '+R(e[0])+', '+e[1]:'not priced')+'</span><input id="ff-'+s+'" inputmode="decimal" value="'+E(o?o.flat_fee_zar:'')+'" placeholder="Platform default"></label><button class="btn dark" data-a="saveflat" data-c="'+s+'" data-co="'+id+'">Save</button></div>'}).join('')+'</div>';
+  fillTow();
+}
+function fillTow(){const sel=$('#tr-c');if(!sel)return;const r=(CACHE.pd.towRates||[]).find(x=>x.service_class_code===sel.value);$('#tr-a').value=r?r.callout_fee_zar:'';$('#tr-k').value=r?r.per_km_rate_zar:'';$('#tr-m').value=r?r.minimum_fare_zar:''}
+document.addEventListener('change',e=>{if(e.target.id==='tr-c')fillTow()});
+
+/* ---------- actions ---------- */
+const refreshAll=async()=>{await load();await pendingBadge()};
+const ACT={
+ login:b=>run(b,async()=>{$('#lerr').textContent='';try{save(await (async()=>{const r=await fetch('/api/admin/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email:$('#em').value,password:$('#pw').value})});const j=await r.json().catch(()=>({}));if(!r.ok)throw new Error(j.error||'Could not sign in.');return j})());render()}catch(e){$('#lerr').textContent=e.message}}),
+ logout:(b,e)=>{e.preventDefault();logout()},
+ tab:b=>{tab=b.dataset.t;F.company=null;closeSheet();render()},
+ reload:()=>load(),
+ chip:b=>{F[b.dataset.k]=b.dataset.k==='rmax'?+b.dataset.v:b.dataset.v;load()},
+ lowrate:()=>{F.rate='visible';F.rmax=2;tab='ratings';render()},
+ closeSheet:()=>closeSheet(),
+ openapp:b=>openApp(b.dataset.id).catch(e=>{closeSheet();toast(e.message,true)}),
+ openpartner:b=>openPartner(b.dataset.id).catch(e=>{closeSheet();toast(e.message,true)}),
+ doc:b=>run(b,async()=>{let reason;if(b.dataset.s==='rejected'){reason=prompt('What is wrong with this document? (optional)')??undefined;if(reason===undefined)return}await api('/api/admin/documents/'+b.dataset.id+'/review',{method:'POST',body:{status:b.dataset.s,reason}});toast('Document marked');await openApp(b.dataset.app)}),
+ approve:b=>run(b,async()=>{if(!confirm('Approve this partner? They can start taking jobs once their prices are set.'))return;const r=await api('/api/admin/applications/'+b.dataset.id+'/approve',{method:'POST',body:{notes:$('#dn').value}});closeSheet();toast('Approved. Now set their prices under Partners.');CACHE.partners=null;await refreshAll()}),
+ decide:b=>run(b,async()=>{const n=$('#dn').value.trim();if(n.length<3){toast('Add a short note so the applicant knows what to do.',true);return}const rej=b.dataset.d==='rejected';if(rej&&!confirm('Decline this application? The applicant will see your note.'))return;await api('/api/admin/applications/'+b.dataset.id+'/decision',{method:'POST',body:{decision:b.dataset.d,notes:n}});closeSheet();toast(rej?'Application declined':'Changes requested');await refreshAll()}),
+ verify:b=>run(b,async()=>{const v=b.dataset.v==='1';if(!v&&!confirm('Suspend this partner? All their vehicles go offline immediately.'))return;await api('/api/admin/partners/'+b.dataset.id+'/verify',{method:'POST',body:{verified:v}});toast(v?'Partner verified':'Partner suspended');const p=await api('/api/admin/partners');CACHE.partners=p.partners;await openPartner(b.dataset.id);if(tab==='partners')load()}),
+ partnerratings:b=>{closeSheet();F.rate='all';F.rmax=5;F.company=b.dataset.id;tab='ratings';render()},
+ allpartners:()=>{F.company=null;load()},
+ savetow:b=>run(b,async()=>{const [a,k,m]=['tr-a','tr-k','tr-m'].map(num);if([a,k,m].some(Number.isNaN)){toast('Fill in all three amounts.',true);return}await api('/api/admin/pricing/tow-rate',{method:'POST',body:{companyId:b.dataset.id,serviceClass:$('#tr-c').value,calloutFee:a,perKm:k,minimum:m}});toast('Towing rate saved');await openPartner(b.dataset.id)}),
+ saveflat:b=>run(b,async()=>{const c=b.dataset.c,raw=$('#ff-'+c).value.trim();const fee=raw===''?null:parseFloat(raw.replace(',','.'));if(fee!==null&&!Number.isFinite(fee)){toast('Enter a number.',true);return}await api('/api/admin/pricing/flat-rate',{method:'POST',body:{companyId:b.dataset.co||null,service:c,fee}});toast(fee===null?'Price removed':'Price saved');if(b.dataset.co)await openPartner(b.dataset.co);else load()}),
+ saveah:b=>run(b,async()=>{const m=num('ah-m');if(Number.isNaN(m)){toast('Enter a multiplier, e.g. 1.25',true);return}await api('/api/admin/pricing/after-hours',{method:'POST',body:{companyId:null,start:$('#ah-s').value,end:$('#ah-e').value,multiplier:m}});toast('After-hours rate saved')}),
+ hide:b=>run(b,async()=>{await api('/api/admin/ratings/'+b.dataset.id+'/visibility',{method:'POST',body:{hidden:b.dataset.h==='1'}});toast(b.dataset.h==='1'?'Rating hidden from averages':'Rating visible again');await load()}),
+ addadmin:b=>run(b,async()=>{await api('/api/admin/team',{method:'POST',body:{email:$('#ne').value}});toast('Administrator added');await load()}),
+ rmadmin:b=>run(b,async()=>{if(!confirm('Remove admin access for '+b.dataset.e+'?'))return;await api('/api/admin/team/'+b.dataset.id,{method:'DELETE'});toast('Removed');await load()})
+};
+document.addEventListener('click',e=>{const b=e.target.closest('[data-a]');if(!b)return;const f=ACT[b.dataset.a];if(f)f(b,e)});
+render();
+</script>
+</body>
+</html>

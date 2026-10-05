@@ -133,7 +133,9 @@ export default function RootLayout() {
       if (!inAuthGroup) redirectTo = '/(auth)/sign-in';
     } else if (authState.status === 'ready') {
       const home = authState.role === 'driver' ? '/(main)/driver' : '/(main)/client';
-      if (inAuthGroup || (segments[0] === '(main)' && segments[1] !== authState.role)) redirectTo = home;
+      // Chat lives under (main) but is shared by both roles, so it must not be bounced to the role home.
+      const onSharedMainRoute = segments[0] === '(main)' && segments[1] === 'chat';
+      if (inAuthGroup || (segments[0] === '(main)' && !onSharedMainRoute && segments[1] !== authState.role)) redirectTo = home;
     }
   }
 

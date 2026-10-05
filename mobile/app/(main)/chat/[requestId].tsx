@@ -11,7 +11,8 @@ import { font, light as L } from '../../../src/theme';
 
 export default function RequestChatScreen() {
   const router = useRouter();
-  const { requestId } = useLocalSearchParams<{ requestId: string }>();
+  const { requestId, peer } = useLocalSearchParams<{ requestId: string; peer?: string }>();
+  const peerLabel = peer === 'client' ? 'client' : peer === 'partner' ? 'partner' : 'the other person';
   const { top, bottom } = useSafeAreaInsets();
   const [messages, setMessages] = useState<RequestMessage[]>([]);
   const [draft, setDraft] = useState('');
@@ -39,7 +40,18 @@ export default function RequestChatScreen() {
     }).then((stop) => { if (active) unsubscribe = stop; else stop?.(); })
       .catch((caught) => { if (active) setError(caught instanceof Error ? caught.message : 'Could not load chat.'); })
       .finally(() => { if (active) setLoading(false); });
-    return () => { active = false; unsubscribe?.(); };
+    // Safety net: if the realtime channel is slow or blocked, new messages still arrive within a few seconds.
+    const poll = setInterval(() => {
+      void loadRequestMessages(requestId).then((latest) => {
+        if (!active) return;
+        setMessages((previous) => {
+          const known = new Set(previous.map((item) => item.id));
+          const fresh = latest.filter((item) => !known.has(item.id));
+          return fresh.length ? [...previous, ...fresh] : previous;
+        });
+      }).catch(() => undefined);
+    }, 4000);
+    return () => { active = false; clearInterval(poll); unsubscribe?.(); };
   }, [requestId]);
 
   const send = async () => {
@@ -61,12 +73,12 @@ export default function RequestChatScreen() {
     <KeyboardAvoidingView style={s.root} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
       <StatusBar style="dark" />
       <View style={[s.header, { paddingTop: top + 8 }]}>
-        <Pressable accessibilityRole="button" accessibilityLabel="Back" onPress={() => router.back()} style={s.headerButton}>
+        <Pressable accessibilityRole="button" accessibilityLabel="Back" onPress={() => { if (router.canGoBack()) router.back(); else router.replace('/'); }} style={s.headerButton}>
           <Ionicons name="chevron-back" size={24} color={L.text} />
         </Pressable>
         <View style={{ flex: 1 }}>
-          <Text style={s.eyebrow}>REQUEST CHAT</Text>
-          <Text style={s.title}>Towber support thread</Text>
+          <Text style={s.eyebrow}>REQUEST {String(requestId ?? '').slice(0, 8).toUpperCase()}</Text>
+          <Text style={s.title}>Chat with {peerLabel}</Text>
         </View>
         <View style={s.headerIcon}><Ionicons name="chatbubbles-outline" size={20} color={L.go} /></View>
       </View>
@@ -82,7 +94,7 @@ export default function RequestChatScreen() {
             const mine = item.sender_user_id === userId;
             return <View style={[s.message, mine ? s.mine : s.theirs]}><Text style={[s.messageText, mine && s.mineText]}>{item.body}</Text><Text style={[s.time, mine && s.mineTime]}>{new Date(item.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</Text></View>;
           }}
-          ListEmptyComponent={<View style={s.empty}><Ionicons name="chatbubble-ellipses-outline" size={30} color={L.go} /><Text style={s.emptyTitle}>Start the conversation</Text><Text style={s.emptyBody}>Message the other person with an update, arrival note or question.</Text></View>}
+          ListEmptyComponent={<View style={s.empty}><Ionicons name="chatbubble-ellipses-outline" size={30} color={L.go} /><Text style={s.emptyTitle}>Start the conversation</Text><Text style={s.emptyBody}>Send {peerLabel} an update, arrival note or question.</Text></View>}
         />
       )}
       {error ? <Text style={s.error}>{error}</Text> : null}

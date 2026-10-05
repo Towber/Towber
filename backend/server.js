@@ -5,6 +5,7 @@ import helmet from 'helmet';
 import rateLimit from 'express-rate-limit';
 import { createClient } from '@supabase/supabase-js';
 import { z } from 'zod';
+import { registerAdmin } from './admin.js';
 
 const { SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, PORT = 4000 } = process.env;
 if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
@@ -505,6 +506,9 @@ app.post('/api/requests/:id/status', requireUser, wrap(async (req, res) => {
   const b = parse(statusActionBody, req.body, res); if (!b) return;
   await handleTransition(req, res, b.action);
 }));
+
+// Admin console (/admin) and its API (/api/admin/*)
+registerAdmin(app, supabase);
 
 // eslint-disable-next-line no-unused-vars
 app.use((err, _req, res, _next) => {

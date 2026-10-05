@@ -25,7 +25,9 @@ Statuses: `draft` → `submitted` → `approved` / `rejected` / `needs_info` (ap
 
 ## 2. How an admin verifies and approves
 
-There is no admin screen yet. Review is done in the Supabase dashboard (or SQL editor). The approve/reject
+**Use the admin console at `/admin`** (see `docs/admin.md`). The SQL below still works and is what the console calls underneath.
+
+Originally review was done in the Supabase dashboard (or SQL editor). The approve/reject
 functions are callable by the service role only, never by the app.
 
 **Find applications waiting for review**
