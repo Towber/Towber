@@ -11,6 +11,7 @@ import { startDriverLocationStream } from '../../../src/driverLocation';
 import { releaseJobAlert, startJobAlert, stopJobAlert } from '../../../src/jobAlertSound';
 import { TOWBERPRO as PARTNER, proBadge, type ProKind } from '../../../src/copy';
 import { font, light as L, lightMapStyle, zar } from '../../../src/theme';
+import { SafetyVerificationPanel } from '../../../src/components/SafetyVerificationPanel';
 
 type BreakdownType = 'flatbed' | 'jumpstart' | 'lockout' | 'fuel' | 'tyre' | 'repair';
 type JobAlert = {
@@ -521,6 +522,7 @@ export default function PartnerRoute() {
               {activeJob.passengers != null ? <View style={styles.panelRow}><Text style={styles.jobLabel}>People in vehicle</Text><Text style={styles.jobValue}>{activeJob.passengers}</Text></View> : null}
               {activeJob.breakdownType === 'flatbed' ? <View style={styles.panelRow}><Text style={styles.jobLabel}>Tow distance</Text><Text style={styles.jobValue}>{activeJob.distanceKm.toFixed(1)} km</Text></View> : null}
             </View>
+            <SafetyVerificationPanel requestId={activeJob.id} />
             {actionError ? <Text style={styles.actionError}>{actionError}</Text> : null}
             <View style={styles.panelActions}>
               <Pressable

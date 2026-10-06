@@ -56,6 +56,12 @@ const config: ExpoConfig = {
       },
     ],
     [
+      'expo-camera',
+      {
+        cameraPermission: 'Allow Towber to use your camera for an on-demand safety verification scan.',
+      },
+    ],
+    [
       'react-native-maps',
       {
         androidGoogleMapsApiKey: 'AIzaSyCByytkUXWtJy9gTa5O4z8AmFOgwxQT43g',

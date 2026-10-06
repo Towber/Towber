@@ -18,6 +18,7 @@ import { TOW_TYPE_OPTIONS, getDraft, matchesTowType, serviceIcon, serviceLabel, 
 import { TruckCard, TruckCardSkeleton, CARD_WIDTH } from '../../../src/components/TruckCard';
 import { TruckMarker } from '../../../src/components/TruckMarker';
 import { loadMyRating, submitRequestRating } from '../../../src/chat';
+import { SafetyVerificationPanel } from '../../../src/components/SafetyVerificationPanel';
 
 // Johannesburg CBD fallback if location permission is denied
 const FALLBACK: LatLng = { lat: -26.2041, lng: 28.0473 };
@@ -600,9 +601,10 @@ export default function HomeScreen() {
                 <Text style={s.statusTimer}>
                   {pendingSecondsLeft > 0
                     ? `Offer window ${Math.floor(pendingSecondsLeft / 60)}:${String(pendingSecondsLeft % 60).padStart(2, '0')} · we re-dispatch if no one accepts`
-                    : 'Re-dispatching to the next nearest truck…'}
+                  : 'Re-dispatching to the next nearest truck…'}
                 </Text>
               )}
+              {activeRequestId && activeStatus && requestStatus !== 'pending' ? <SafetyVerificationPanel requestId={activeRequestId} /> : null}
               {activeStatus ? (
                 <View style={s.statusActions}>
                   {requestStatus !== 'pending' ? <Pressable accessibilityRole="button" onPress={() => router.push({ pathname: '/(main)/chat/[requestId]', params: { requestId: activeRequestId, peer: 'partner' } })} style={s.chatAction}><Ionicons name="chatbubble-ellipses-outline" size={18} color={L.text} /><Text style={s.chatActionText}>Chat with your TowberPro</Text></Pressable> : null}
