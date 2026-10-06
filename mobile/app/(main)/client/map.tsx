@@ -14,7 +14,7 @@ import { darkMapStyle, font, light as L, radius, zar, zarRange } from '../../../
 import { supabase, type BreakdownType, createRequest, fetchActiveRequest, fetchNearby, fetchPlaceSuggestions, fetchRoadRoute, getRequest, isActiveRequestStatus, isTerminalRequestStatus, transitionRequest, type LatLng, type PlaceSuggestion, type RoadRoute, roadKm, subscribeRequestDriverLocation, type RequestStatus, type Truck } from '../../../src/api';
 import { SearchBar } from '../../../src/components/SearchBar';
 import { TopBar, TOPBAR_HEIGHT } from '../../../src/components/TopBar';
-import { getDraft, serviceIcon, serviceLabel } from '../../../src/requestDraft';
+import { TOW_TYPE_OPTIONS, getDraft, matchesTowType, serviceIcon, serviceLabel, type TowTypeFilter } from '../../../src/requestDraft';
 import { TruckCard, TruckCardSkeleton, CARD_WIDTH } from '../../../src/components/TruckCard';
 import { TruckMarker } from '../../../src/components/TruckMarker';
 import { loadMyRating, submitRequestRating } from '../../../src/chat';
@@ -34,24 +34,24 @@ const TIMELINE: { key: RequestStatus; label: string }[] = [
   { key: 'completed', label: 'Done' },
 ];
 const STATUS_TITLE: Record<RequestStatus, string> = {
-  pending: 'Finding a partner',
-  accepted: 'Partner found',
-  en_route: 'Partner on the way',
-  arrived: 'Partner has arrived',
+  pending: 'Assigning a nearby TowberPro...',
+  accepted: 'TowberPro found',
+  en_route: 'Your TowberPro is on the way',
+  arrived: 'Your TowberPro has arrived',
   completed: 'Tow complete',
   cancelled: 'Request cancelled',
   declined: 'No truck available',
-  expired: 'No response from partners',
+  expired: 'No response from TowberPros',
 };
 const STATUS_COPY: Record<RequestStatus, string> = {
-  pending: 'Nearby trucks have been notified of your breakdown.',
-  accepted: 'Your partner is preparing to leave.',
-  en_route: 'Live GPS tracking is on — watch the truck approach.',
-  arrived: 'Your partner is at your location.',
+  pending: 'Nearby TowberPros have been notified of your breakdown.',
+  accepted: 'Your TowberPro is arriving shortly.',
+  en_route: 'Your TowberPro is arriving shortly. Live GPS tracking is on.',
+  arrived: 'Your TowberPro is at your location.',
   completed: 'Thanks for riding with Towber. Safe travels.',
   cancelled: 'You cancelled this request. You can request a new tow anytime.',
   declined: 'Every nearby truck was unavailable. Try again or pick another truck.',
-  expired: 'No partner responded in time. Try again with the nearest trucks.',
+  expired: 'No TowberPro responded in time. Try again with the nearest trucks.',
 };
 
 // White Bolt-style bottom sheet.
@@ -99,12 +99,17 @@ export default function HomeScreen() {
   const [ratingSaved, setRatingSaved] = useState(false);
   const [ratingSaving, setRatingSaving] = useState(false);
 
+  const [towType, setTowType] = useState<TowTypeFilter>(draft?.towType ?? 'any');
   const isTow = breakdownType === 'flatbed';
   const tripKm = useMemo(
     () => (!isTow ? CALLOUT_ONLY_KM : route?.distanceKm ?? (me && dest ? roadKm(me, dest) : DEFAULT_TRIP_KM)),
     [isTow, me, dest, route],
   );
-  const selected = trucks.find((t) => t.vehicleId === selectedId) ?? null;
+  const visibleTrucks = useMemo(
+    () => (isTow ? trucks.filter((t) => matchesTowType(t.vehicleType, towType)) : trucks),
+    [trucks, isTow, towType],
+  );
+  const selected = visibleTrucks.find((t) => t.vehicleId === selectedId) ?? null;
 
 // Ask for permission when the client route mounts; the resulting GPS fix is
 // used both to center the map and as the pickup sent with a tow request.
@@ -153,7 +158,7 @@ export default function HomeScreen() {
       setTrucks(await fetchNearby(me, tripKm, breakdownType));
       setQuoteDistanceKm(tripKm);
     } catch (e: any) {
-      Alert.alert('Could not load nearby partners', e.message ?? 'Check your connection and try again.');
+      Alert.alert('Could not load nearby TowberPros', e.message ?? 'Check your connection and try again.');
     } finally {
       setLoading(false);
     }
@@ -441,7 +446,7 @@ export default function HomeScreen() {
           />
         )}
         {dest && <Marker coordinate={{ latitude: dest.lat, longitude: dest.lng }} pinColor={L.route} />}
-        {trucks.map((t) => (
+        {visibleTrucks.map((t) => (
           <TruckMarker key={t.vehicleId} truck={t} selected={t.vehicleId === selectedId} onPress={() => pick(t)} />
         ))}
       </MapView>
@@ -522,9 +527,9 @@ export default function HomeScreen() {
       <BottomSheet ref={sheetRef} snapPoints={[192 + bottom, '62%']} index={expanded ? 1 : 0} backgroundComponent={Sheet} handleIndicatorStyle={{ backgroundColor: '#D1D5DB', width: 40 }}>
         <BottomSheetView style={s.sheet}>
           <View style={s.head}>
-            <Text style={s.title}>{activeRequestId ? 'Your request' : !isTow ? 'Nearby help' : expanded ? 'Nearby tow trucks' : 'Where to?'}</Text>
+            <Text style={s.title}>{activeRequestId ? 'Your request' : !isTow ? 'Nearby help' : expanded ? 'Nearby TowberPros' : 'Where to?'}</Text>
             <View style={s.headActions}>
-              {expanded && !loading && <Text style={s.count}>{trucks.length} available</Text>}
+              {expanded && !loading && <Text style={s.count}>{visibleTrucks.length} available</Text>}
             </View>
           </View>
           <Pressable
@@ -540,18 +545,30 @@ export default function HomeScreen() {
             </Text>
             {!activeRequestId ? <Text style={s.summaryEdit}>Change</Text> : null}
           </Pressable>
+          {isTow && !activeRequestId ? (
+            <View style={s.towFilter}>
+              {TOW_TYPE_OPTIONS.map((opt) => {
+                const on = towType === opt.id;
+                return (
+                  <Pressable key={opt.id} accessibilityRole="button" accessibilityState={{ selected: on }} onPress={() => { setTowType(opt.id); setSelectedId(null); }} style={[s.towFilterChip, on && s.towFilterChipOn]}>
+                    <Text style={[s.towFilterText, on && { color: L.onGo }]}>{opt.label}</Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+          ) : null}
           {activeRequestId && activeStatus && requestStatus !== 'pending' && (
             <Text style={s.tracking}>{trackingCopy[trackingState === 'idle' ? 'connecting' : trackingState]}</Text>
           )}
 
           {!expanded ? null : loading ? (
             <View style={{ flexDirection: 'row', paddingHorizontal: 16 }}><TruckCardSkeleton /><TruckCardSkeleton /></View>
-          ) : trucks.length === 0 ? (
-            <Text style={s.empty}>No verified trucks within 15 km right now. Try again in a minute or call your insurer’s roadside line.</Text>
+          ) : visibleTrucks.length === 0 ? (
+            <Text style={s.empty}>{towType === 'any' || !isTow ? 'No verified TowberPros within 15 km right now.' : `No ${TOW_TYPE_OPTIONS.find((o) => o.id === towType)?.label} TowberPros within 15 km right now. Try "Any" to see every tow type.`} Try again in a minute or call your insurer’s roadside line.</Text>
           ) : (
             <FlatList
               horizontal showsHorizontalScrollIndicator={false}
-              data={trucks} keyExtractor={(t) => t.vehicleId}
+              data={visibleTrucks} keyExtractor={(t) => t.vehicleId}
               contentContainerStyle={{ paddingHorizontal: 16 }}
               snapToInterval={CARD_WIDTH + 12} decelerationRate="fast"
               renderItem={({ item }) => <TruckCard truck={item} selected={item.vehicleId === selectedId} onPress={() => pick(item)} />}
@@ -588,14 +605,14 @@ export default function HomeScreen() {
               )}
               {activeStatus ? (
                 <View style={s.statusActions}>
-                  {requestStatus !== 'pending' ? <Pressable accessibilityRole="button" onPress={() => router.push({ pathname: '/(main)/chat/[requestId]', params: { requestId: activeRequestId, peer: 'partner' } })} style={s.chatAction}><Ionicons name="chatbubble-ellipses-outline" size={18} color={L.text} /><Text style={s.chatActionText}>Chat with partner</Text></Pressable> : null}
+                  {requestStatus !== 'pending' ? <Pressable accessibilityRole="button" onPress={() => router.push({ pathname: '/(main)/chat/[requestId]', params: { requestId: activeRequestId, peer: 'partner' } })} style={s.chatAction}><Ionicons name="chatbubble-ellipses-outline" size={18} color={L.text} /><Text style={s.chatActionText}>Chat with your TowberPro</Text></Pressable> : null}
                   <Pressable accessibilityRole="button" disabled={cancelling} onPress={cancelActiveRequest} style={[s.cancelButton, cancelling && s.cancelButtonOff]}>
                     {cancelling ? <ActivityIndicator size="small" color={L.danger} /> : <Text style={s.cancelText}>Cancel request</Text>}
                   </Pressable>
                 </View>
               ) : (
                 <View style={{ gap: 8 }}>
-                  {requestStatus === 'completed' && !ratingSaved ? <Pressable accessibilityRole="button" onPress={() => setRatingVisible(true)} style={[s.cta, { marginHorizontal: 0 }]}><Text style={s.ctaText}>Rate your partner</Text></Pressable> : null}
+                  {requestStatus === 'completed' && !ratingSaved ? <Pressable accessibilityRole="button" onPress={() => setRatingVisible(true)} style={[s.cta, { marginHorizontal: 0 }]}><Text style={s.ctaText}>Rate your TowberPro</Text></Pressable> : null}
                   <Pressable accessibilityRole="button" onPress={resetRequest} style={[s.cta, { marginHorizontal: 0 }]}><Text style={s.ctaText}>{requestStatus === 'completed' ? (ratingSaved ? 'Done' : 'Skip for now') : 'Request help again'}</Text></Pressable>
                 </View>
               )}
@@ -609,7 +626,7 @@ export default function HomeScreen() {
             >
               <Text style={[s.ctaText, ctaDisabled && s.ctaTextOff]}>
                 {needsDest ? 'Enter your destination for price'
-                  : !selected ? (isTow ? 'Choose a truck' : 'Choose a partner')
+                  : !selected ? 'Choose a TowberPro'
                   : quoteRefreshing ? 'Updating route-based ZAR estimate…'
                   : requesting ? 'Sending request…'
                   : `${isTow ? 'Request Tow' : `Request ${serviceLabel(breakdownType)}`}  ·  ${selected.pricingModel === 'flat' ? zar(selected.priceMin) : zarRange(selected.priceMin, selected.priceMax)}`}
@@ -623,7 +640,7 @@ export default function HomeScreen() {
         <View style={s.ratingBackdrop}>
           <View style={s.ratingCard}>
             <Text style={s.ratingEyebrow}>JOB COMPLETE</Text>
-            <Text style={s.ratingTitle}>How was your partner?</Text>
+            <Text style={s.ratingTitle}>How was your TowberPro?</Text>
             <Text style={s.ratingBody}>Your feedback helps keep roadside help dependable for every guest.</Text>
             <View style={s.stars}>{[1, 2, 3, 4, 5].map((value) => <Pressable key={value} accessibilityRole="button" accessibilityLabel={`${value} star${value === 1 ? '' : 's'}`} onPress={() => setRatingValue(value)}><Ionicons name={value <= ratingValue ? 'star' : 'star-outline'} size={34} color={L.go} /></Pressable>)}</View>
             <TextInput accessibilityLabel="Rating comment" placeholder="Add a note (optional)" placeholderTextColor={L.disabledText} value={ratingComment} onChangeText={setRatingComment} style={s.ratingInput} multiline maxLength={500} />
@@ -642,6 +659,10 @@ const s = StyleSheet.create({
   head: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'baseline', paddingHorizontal: 20 },
   headActions: { flexDirection: 'row', alignItems: 'center', gap: 12 },
   title: { color: L.text, fontFamily: font.bold, fontSize: 18 },
+  towFilter: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, paddingHorizontal: 16, paddingVertical: 8 },
+  towFilterChip: { paddingHorizontal: 12, height: 34, borderRadius: 999, backgroundColor: L.surfaceRaised, alignItems: 'center', justifyContent: 'center' },
+  towFilterChipOn: { backgroundColor: L.go },
+  towFilterText: { color: L.text, fontFamily: font.medium, fontSize: 12 },
   count: { color: L.textMuted, fontFamily: font.medium, fontSize: 13 },
   serviceSummary: { marginHorizontal: 16, height: 44, flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 10, borderRadius: 12, backgroundColor: L.surfaceRaised },
   summaryIcon: { width: 28, height: 28, borderRadius: 14, backgroundColor: L.goSoft, alignItems: 'center', justifyContent: 'center' },

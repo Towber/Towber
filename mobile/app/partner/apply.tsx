@@ -10,10 +10,10 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import * as DocumentPicker from 'expo-document-picker';
 
 import { supabase, type BreakdownType } from '../../src/api';
-import { PARTNER } from '../../src/copy';
+import { TOWBERPRO as PARTNER } from '../../src/copy';
 import { setPartnerIntent } from '../../src/partnerIntent';
 import {
-  DOC_BUCKET, DOC_INFO, SERVICE_OPTIONS, STATUS_COPY, TIERS, TOW_VEHICLE_TYPES,
+  DOC_BUCKET, SERVICE_OPTIONS, docInfo, isWinchTow, STATUS_COPY, TIERS, TOW_VEHICLE_TYPES,
   optionalDocs, requiredDocs,
   type ApplicationStatus, type DocType, type PartnerTier, type TowVehicleType,
 } from '../../src/partnerOnboarding';
@@ -170,7 +170,7 @@ export default function PartnerApplyScreen() {
   };
 
   // ---------- step 2: documents ----------
-  const required = useMemo(() => (tier ? requiredDocs(tier) : []), [tier]);
+  const required = useMemo(() => (tier ? requiredDocs(tier, towType) : []), [tier, towType]);
   const optional = useMemo(() => (tier ? optionalDocs(tier, capabilities) : []), [tier, capabilities]);
   const hasDoc = (t: DocType) => docs.some((d) => d.document_type === t);
   const missing = required.filter((t) => !hasDoc(t));
@@ -228,7 +228,7 @@ export default function PartnerApplyScreen() {
       if (error) {
         if (error.message.includes('missing_documents')) {
           const names = (error.message.split('missing_documents:')[1] ?? '').split(',')
-            .map((c) => DOC_INFO[c.trim() as DocType]?.label ?? c.trim()).filter(Boolean);
+            .map((c) => docInfo(c.trim() as DocType, towType)?.label ?? c.trim()).filter(Boolean);
           throw new Error(`Please upload: ${names.join(', ')}`);
         }
         throw error;
@@ -300,7 +300,7 @@ export default function PartnerApplyScreen() {
         <StatusBar style="dark" />
         <View style={s.center}>
           <View style={s.statusIcon}><MaterialCommunityIcons name="handshake-outline" size={30} color={L.text} /></View>
-          <Text style={[s.h1, s.tc]}>Become a Towber {PARTNER.singular}</Text>
+          <Text style={[s.h1, s.tc]}>Become a {PARTNER.singular}</Text>
           <Text style={[s.body, s.tc]}>Choose the services you offer, upload your documents, and our team will verify you. You can save and come back any time.</Text>
           <Pressable accessibilityRole="button" onPress={() => { setStep(0); setStarting(true); }} style={s.primary}><Text style={s.primaryText}>Start application</Text></Pressable>
           <Pressable accessibilityRole="button" onPress={close} style={s.linkBtn}><Text style={s.linkText}>Not now</Text></Pressable>
@@ -404,9 +404,10 @@ export default function PartnerApplyScreen() {
               <Text style={s.h1}>Upload documents</Text>
               <Text style={s.body}>PDF, JPG or PNG, up to 10 MB each. Only our verification team can see these.</Text>
               <Text style={s.h2}>Required</Text>
-              {required.map((t) => <DocRow key={t} type={t} done={hasDoc(t)} busy={busyDoc === t} onPress={() => { void uploadDoc(t); }} />)}
+              {tier === 'tow_operator' && isWinchTow(towType) ? <Text style={s.body}>Winch Bakkie / Sling Tow: upload your Code 8/10 PrDP, vehicle registration, GIT insurance and winch setup photos.</Text> : null}
+              {required.map((t) => <DocRow key={t} type={t} towType={towType} done={hasDoc(t)} busy={busyDoc === t} onPress={() => { void uploadDoc(t); }} />)}
               {optional.length > 0 ? <Text style={s.h2}>Optional</Text> : null}
-              {optional.map((t) => <DocRow key={t} type={t} done={hasDoc(t)} busy={busyDoc === t} onPress={() => { void uploadDoc(t); }} />)}
+              {optional.map((t) => <DocRow key={t} type={t} towType={towType} done={hasDoc(t)} busy={busyDoc === t} onPress={() => { void uploadDoc(t); }} />)}
             </>
           )}
 
@@ -449,8 +450,8 @@ function Field({ label, ...props }: { label: string } & React.ComponentProps<typ
   );
 }
 
-function DocRow({ type, done, busy, onPress }: { type: DocType; done: boolean; busy: boolean; onPress: () => void }) {
-  const info = DOC_INFO[type];
+function DocRow({ type, towType, done, busy, onPress }: { type: DocType; towType?: TowVehicleType | null; done: boolean; busy: boolean; onPress: () => void }) {
+  const info = docInfo(type, towType);
   return (
     <Pressable accessibilityRole="button" accessibilityLabel={`${done ? 'Replace' : 'Upload'} ${info.label}`} disabled={busy} onPress={onPress} style={[s.doc, done && s.docDone]}>
       <View style={[s.docIcon, done && { backgroundColor: L.go }]}>

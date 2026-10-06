@@ -15,7 +15,7 @@ import { StatusBar } from 'expo-status-bar';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { supabase } from '../../src/api';
-import { PARTNER } from '../../src/copy';
+import { BRAND, TOWBERPRO as PARTNER } from '../../src/copy';
 import { setPartnerIntent } from '../../src/partnerIntent';
 import { font, light as L } from '../../src/theme';
 
@@ -84,7 +84,7 @@ export default function SignInScreen() {
           <View style={styles.header}>
             <Image accessibilityLabel="Towber logo" source={require('../../assets/images/towber-icon-rounded-512.png')} resizeMode="contain" style={styles.logo} />
             <Text style={styles.brand}>Towber</Text>
-            <Text style={styles.tagline}>Roadside help, when you need it.</Text>
+            <Text style={styles.tagline}>{BRAND.tagline}</Text>
           </View>
 
           {/* GUEST PORTAL */}
@@ -142,7 +142,7 @@ export default function SignInScreen() {
           {sentTo ? (
             <View accessibilityLiveRegion="polite" style={styles.notice}>
               <Text style={styles.noticeTitle}>Check your email</Text>
-              <Text style={styles.noticeText}>{sentForApplication ? `We sent a verification link to ${sentTo}. Open it on this phone and your partner application will open next.` : `We sent a one-time link to ${sentTo}. Open it on this phone to return to Towber.`}</Text>
+              <Text style={styles.noticeText}>{sentForApplication ? `We sent a verification link to ${sentTo}. Open it on this phone and your TowberPro application will open next.` : `We sent a one-time link to ${sentTo}. Open it on this phone to return to Towber.`}</Text>
             </View>
           ) : null}
 

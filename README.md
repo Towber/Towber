@@ -1,5 +1,7 @@
 # Towber
 
+> Fast Roadside & Towing.
+
 Towber is a React Native motorist app backed by an Express API and Supabase (Postgres + PostGIS). The repository includes an EAS-ready Expo app, a Railway-compatible API, and versioned Supabase migrations.
 
 ## Repository layout
@@ -106,7 +108,7 @@ Release/preview builds check for updates when launched. They download a compatib
 
 ## 6. Expo Router roles
 
-> **Naming:** Towber now hosts several services, so the app UI says *partner* (see `mobile/src/copy.ts`). Internal identifiers are unchanged on purpose: the `driver` value of `user_role`, the `/(main)/driver` route, `vehicle_driver_assignments`, and the `driver_*` DB/API names.
+> **Naming:** Towber now hosts several services, so the app UI says *TowberPro* (see `mobile/src/copy.ts`). Internal identifiers are unchanged on purpose: the `driver` value of `user_role`, the `/(main)/driver` route, `vehicle_driver_assignments`, and the `driver_*` DB/API names.
 
 `mobile/app/_layout.tsx` restores a Supabase session, reads the caller's `user_profiles.role`, and redirects to `/(main)/client` or `/(main)/driver`. Partners sign in using an invited email magic link; uninvited email addresses cannot create accounts from the app. Clients can explicitly continue with an anonymous guest session when that provider is enabled. New Auth accounts receive the least-privileged `client` role. The role column is not writable by signed-in users; a trusted administrator must promote a driver, as shown in [the test partner setup guide](docs/test-driver-auth.md).
 

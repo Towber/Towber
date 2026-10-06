@@ -9,7 +9,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { supabase, isTerminalRequestStatus, transitionRequest, type RequestAction, type RequestStatus } from '../../../src/api';
 import { startDriverLocationStream } from '../../../src/driverLocation';
 import { releaseJobAlert, startJobAlert, stopJobAlert } from '../../../src/jobAlertSound';
-import { PARTNER } from '../../../src/copy';
+import { TOWBERPRO as PARTNER, proBadge, type ProKind } from '../../../src/copy';
 import { font, light as L, lightMapStyle, zar } from '../../../src/theme';
 
 type BreakdownType = 'flatbed' | 'jumpstart' | 'lockout' | 'fuel' | 'tyre' | 'repair';
@@ -131,6 +131,7 @@ export default function PartnerRoute() {
   const [menuOpen, setMenuOpen] = useState(false);
   const [switching, setSwitching] = useState(false);
   const [accountEmail, setAccountEmail] = useState<string | null>(null);
+  const [proKind, setProKind] = useState<ProKind | null>(null);
   const [vehicleId, setVehicleId] = useState<string | null>(null);
   const [assignmentLoading, setAssignmentLoading] = useState(true);
   const [assignmentError, setAssignmentError] = useState<string | null>(null);
@@ -175,6 +176,17 @@ export default function PartnerRoute() {
   }, []);
 
   useEffect(() => { void loadAssignment(); }, [loadAssignment]);
+
+  // Profile badge: TowberPro (Towing) or TowberPro (Mobile Tech), from the services selected at registration.
+  useEffect(() => {
+    let mounted = true;
+    Promise.resolve(supabase.rpc('get_my_towberpro_kind'))
+      .then(({ data, error }) => {
+        if (mounted && !error && (data === 'towing' || data === 'mobile_tech')) setProKind(data);
+      })
+      .catch(() => undefined);
+    return () => { mounted = false; };
+  }, [vehicleId]);
 
   useEffect(() => {
     if (!online || !vehicleId) return;
@@ -545,6 +557,7 @@ export default function PartnerRoute() {
         ) : (
           <>
             <Text style={styles.eyebrow}>{PARTNER.mode}</Text>
+            {proKind ? <View style={styles.proBadge}><Text style={styles.proBadgeText}>{proBadge(proKind)}</Text></View> : null}
             <Text style={styles.title}>{online ? 'You’re online' : 'You’re offline'}</Text>
             <View style={styles.statusRow}>
               {assignmentLoading ? <ActivityIndicator size="small" color={L.go} /> : online ? <View style={[styles.dot, styles.dotOn]} /> : null}
@@ -593,6 +606,7 @@ export default function PartnerRoute() {
               <View style={styles.avatar}><Ionicons name="person" size={20} color={L.route} /></View>
               <View style={{ flex: 1 }}>
                 <Text style={styles.accountName}>{PARTNER.Singular} account</Text>
+                {proKind ? <View style={styles.proBadge}><Text style={styles.proBadgeText}>{proBadge(proKind)}</Text></View> : null}
                 <Text style={styles.accountEmail} numberOfLines={1}>{accountEmail ?? 'Signed in'}</Text>
               </View>
             </View>
@@ -705,6 +719,8 @@ const styles = StyleSheet.create({
   sheet: { position: 'absolute', left: 0, right: 0, bottom: 0, paddingHorizontal: 20, paddingTop: 10, borderTopLeftRadius: 28, borderTopRightRadius: 28, backgroundColor: L.surface, gap: 6, shadowColor: '#000000', shadowOpacity: 0.16, shadowRadius: 16, shadowOffset: { width: 0, height: -4 }, elevation: 16 },
   grabber: { alignSelf: 'center', width: 40, height: 4, borderRadius: 2, backgroundColor: L.disabled, marginBottom: 10 },
   eyebrow: { color: L.go, fontFamily: font.bold, fontSize: 11, letterSpacing: 1.4 },
+  proBadge: { alignSelf: 'flex-start', marginTop: 6, paddingHorizontal: 10, paddingVertical: 4, borderRadius: 999, backgroundColor: L.goSoft },
+  proBadgeText: { color: L.go, fontFamily: font.bold, fontSize: 12 },
   title: { color: L.text, fontFamily: font.bold, fontSize: 26, letterSpacing: -0.6 },
   statusRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 12 },
   subtitle: { flex: 1, color: L.textMuted, fontFamily: font.medium, fontSize: 13, lineHeight: 18 },

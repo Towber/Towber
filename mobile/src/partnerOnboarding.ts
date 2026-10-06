@@ -11,8 +11,8 @@ export type DocType =
 export const DOC_BUCKET = 'partner-documents-private';
 
 export const TIERS: { id: PartnerTier; title: string; blurb: string; icon: string }[] = [
-  { id: 'tow_operator', title: 'Tow operator', blurb: 'You run a tow truck or recovery vehicle.', icon: 'tow-truck' },
-  { id: 'roadside_responder', title: 'Roadside responder', blurb: 'Mobile mechanic or technician in a bakkie or car.', icon: 'car-wrench' },
+  { id: 'tow_operator', title: 'TowberPro (Towing)', blurb: 'You run a flatbed, winch bakkie, sling tow or other recovery vehicle.', icon: 'tow-truck' },
+  { id: 'roadside_responder', title: 'TowberPro (Mobile Tech)', blurb: 'Mobile mechanic or technician in a bakkie or car.', icon: 'car-wrench' },
 ];
 
 export const SERVICE_OPTIONS: { id: BreakdownType; label: string; icon: string }[] = [
@@ -25,10 +25,10 @@ export const SERVICE_OPTIONS: { id: BreakdownType; label: string; icon: string }
 ];
 
 export const TOW_VEHICLE_TYPES: { id: TowVehicleType; label: string }[] = [
-  { id: 'flatbed_rollback', label: 'Flatbed / rollback' },
+  { id: 'flatbed_rollback', label: 'Flatbed / Rollback' },
+  { id: 'winch_recovery', label: 'Winch Bakkie / Sling Tow' },
   { id: 'standard_tow', label: 'Wheel-lift / light tow' },
   { id: 'heavy_duty', label: 'Heavy duty' },
-  { id: 'winch_recovery', label: 'Winch recovery' },
 ];
 
 export const DOC_INFO: Record<DocType, { label: string; help: string }> = {
@@ -44,11 +44,25 @@ export const DOC_INFO: Record<DocType, { label: string; help: string }> = {
   equipment_photo: { label: 'Photo of winch / straps / equipment', help: 'Shows your recovery equipment in working order.' },
 };
 
+// Winch Bakkie / Sling Tow operators upload a Code 8/10 PrDP, the standard
+// vehicle registration (licence disc), GIT insurance and winch setup photos.
+export const isWinchTow = (towType: TowVehicleType | null | undefined) => towType === 'winch_recovery';
+
+const WINCH_DOC_INFO: Partial<Record<DocType, { label: string; help: string }>> = {
+  prdp: { label: 'PrDP (Code 8 / 10)', help: 'Professional Driving Permit covering Code 8 or Code 10 licence.' },
+  vehicle_license_disc: { label: 'Vehicle registration / licence disc', help: 'Current registration for your winch bakkie or sling tow vehicle.' },
+  towing_insurance: { label: 'GIT insurance (Goods-in-Transit)', help: 'Current policy schedule or certificate.' },
+  equipment_photo: { label: 'Winch setup verification photos', help: 'Clear photo of your winch / sling fitted to the vehicle, in working order.' },
+};
+
+export const docInfo = (type: DocType, towType?: TowVehicleType | null) =>
+  (isWinchTow(towType) ? WINCH_DOC_INFO[type] : undefined) ?? DOC_INFO[type];
+
 // Keep in sync with public.partner_required_documents() in the database.
-export function requiredDocs(tier: PartnerTier): DocType[] {
-  return tier === 'tow_operator'
-    ? ['id_document', 'prdp', 'vehicle_license_disc', 'certificate_of_fitness', 'towing_insurance', 'equipment_photo']
-    : ['id_document', 'drivers_license', 'vehicle_license_disc', 'vehicle_photo'];
+export function requiredDocs(tier: PartnerTier, towType?: TowVehicleType | null): DocType[] {
+  if (tier !== 'tow_operator') return ['id_document', 'drivers_license', 'vehicle_license_disc', 'vehicle_photo'];
+  if (isWinchTow(towType)) return ['id_document', 'prdp', 'vehicle_license_disc', 'towing_insurance', 'equipment_photo'];
+  return ['id_document', 'prdp', 'vehicle_license_disc', 'certificate_of_fitness', 'towing_insurance', 'equipment_photo'];
 }
 
 export function optionalDocs(tier: PartnerTier, capabilities: string[]): DocType[] {
@@ -63,6 +77,6 @@ export const STATUS_COPY: Record<ApplicationStatus, { title: string; body: strin
   draft: { title: 'Application in progress', body: 'Finish your details and documents, then submit for review.' },
   submitted: { title: 'Under review', body: 'Our team is checking your documents. This usually takes 1–2 working days. We will email you the outcome.' },
   needs_info: { title: 'More information needed', body: 'A reviewer asked for changes. Update your application and submit it again.' },
-  approved: { title: 'You are approved', body: 'Welcome to Towber. Sign out and sign back in with the same email to open the Partner app.' },
+  approved: { title: 'You are approved', body: 'Welcome to Towber. Sign out and sign back in with the same email to open the TowberPro app.' },
   rejected: { title: 'Application not approved', body: 'Your application was not approved.' },
 };

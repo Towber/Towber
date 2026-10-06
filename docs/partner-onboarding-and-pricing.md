@@ -1,4 +1,6 @@
-# Partner onboarding, approval and pricing
+# TowberPro onboarding, approval and pricing
+
+> Drivers/partners are now called **TowberPro** in the app. Table and function names (`partner_*`) are unchanged.
 
 Migration: `supabase/migrations/20261003000001_flat_fees_and_partner_onboarding.sql`
 (apply it with the **Supabase Production Migrations** workflow, or `supabase db push` on a test project first).
@@ -8,7 +10,7 @@ Migration: `supabase/migrations/20261003000001_flat_fees_and_partner_onboarding.
 1. Sign-in screen → **Partners** card → enter email → **New here? Apply to become a partner**.
    A magic link creates a normal `client` account (no special access yet).
 2. The link opens the application:
-   1. **Services**: *Tow operator* or *Roadside responder*, then the services offered
+   1. **Services**: *TowberPro (Towing)* or *TowberPro (Mobile Tech)*, then the services offered
       (towing, jump start, fuel, tyre, lockout, minor repairs). Jobs are only ever offered for the
       services chosen here.
    2. **Details**: trading name, registration (optional), phone, vehicle registration, tow vehicle type.
@@ -16,8 +18,9 @@ Migration: `supabase/migrations/20261003000001_flat_fees_and_partner_onboarding.
 
       | Tier | Required | Optional |
       |---|---|---|
-      | Tow operator | SA ID/passport, PrDP (EC1/C1), vehicle licence disc, Certificate of Fitness, towing/GIT insurance, equipment photo | Towing permit, trade certificate |
-      | Roadside responder | SA ID/passport, driver's licence (Code 8), vehicle licence disc, vehicle photo | Trade test / qualification |
+      | TowberPro (Towing), Flatbed / Rollback and other tow vehicles | SA ID/passport, PrDP (EC1/C1), vehicle licence disc, Certificate of Fitness, towing/GIT insurance, equipment photo | Towing permit, trade certificate |
+      | TowberPro (Towing), Winch Bakkie / Sling Tow | SA ID/passport, PrDP (Code 8/10), vehicle registration (licence disc), GIT insurance, winch setup verification photos | Towing permit, trade certificate |
+      | TowberPro (Mobile Tech) | SA ID/passport, driver's licence (Code 8), vehicle licence disc, vehicle photo | Trade test / qualification |
    4. **Review and submit**. The database refuses submission if a required document is missing.
 3. Status is visible any time from the motorist home screen ("Your partner application").
 

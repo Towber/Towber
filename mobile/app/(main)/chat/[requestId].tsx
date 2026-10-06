@@ -12,7 +12,7 @@ import { font, light as L } from '../../../src/theme';
 export default function RequestChatScreen() {
   const router = useRouter();
   const { requestId, peer } = useLocalSearchParams<{ requestId: string; peer?: string }>();
-  const peerLabel = peer === 'client' ? 'client' : peer === 'partner' ? 'partner' : 'the other person';
+  const peerLabel = peer === 'client' ? 'client' : peer === 'partner' ? 'TowberPro' : 'the other person';
   const { top, bottom } = useSafeAreaInsets();
   const [messages, setMessages] = useState<RequestMessage[]>([]);
   const [draft, setDraft] = useState('');

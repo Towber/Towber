@@ -7,9 +7,9 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { fetchActiveRequest, supabase, type BreakdownType, type ServiceFor } from '../../../src/api';
 import { TopBar } from '../../../src/components/TopBar';
-import { PARTNER } from '../../../src/copy';
+import { TOWBERPRO as PARTNER } from '../../../src/copy';
 import { STATUS_COPY, type ApplicationStatus } from '../../../src/partnerOnboarding';
-import { SERVICES, getDraft, setDraft } from '../../../src/requestDraft';
+import { SERVICES, TOW_TYPE_OPTIONS, getDraft, setDraft, type TowTypeFilter } from '../../../src/requestDraft';
 import { font, light as L } from '../../../src/theme';
 
 const COLORS: { name: string; hex: string }[] = [
@@ -23,6 +23,7 @@ export default function ServiceScreen() {
   const { bottom } = useSafeAreaInsets();
   const saved = getDraft();
   const [service, setService] = useState<BreakdownType | null>(saved?.breakdownType ?? null);
+  const [towType, setTowType] = useState<TowTypeFilter>(saved?.towType ?? 'any');
   const [serviceFor, setServiceFor] = useState<ServiceFor>(saved?.serviceFor ?? 'self');
   const [contactName, setContactName] = useState(saved?.contactName ?? '');
   const [contactPhone, setContactPhone] = useState(saved?.contactPhone ?? '');
@@ -85,6 +86,7 @@ export default function ServiceScreen() {
     if (!service || !canContinue) return;
     setDraft({
       breakdownType: service,
+      towType: service === 'flatbed' ? towType : undefined,
       serviceFor,
       contactName: serviceFor === 'other' ? contactName.trim() : undefined,
       contactPhone: serviceFor === 'other' ? contactPhone.trim() : undefined,
@@ -150,6 +152,23 @@ export default function ServiceScreen() {
             })}
           </View>
 
+          {service === 'flatbed' ? (
+            <>
+              <Text style={s.h2}>Type of tow</Text>
+              <View style={s.towRow}>
+                {TOW_TYPE_OPTIONS.map((opt) => {
+                  const on = towType === opt.id;
+                  return (
+                    <Pressable key={opt.id} accessibilityRole="button" accessibilityState={{ selected: on }} onPress={() => setTowType(opt.id)} style={[s.towChip, on && s.towChipOn]}>
+                      <MaterialCommunityIcons name={opt.icon as any} size={16} color={on ? L.onGo : L.text} />
+                      <Text style={[s.towChipText, on && { color: L.onGo }]}>{opt.label}</Text>
+                    </Pressable>
+                  );
+                })}
+              </View>
+            </>
+          ) : null}
+
           <Text style={s.h2} onLayout={(e) => { whoForY.current = e.nativeEvent.layout.y; }}>Who is this for?</Text>
           <View style={s.segment}>
             {([['self', 'Me'], ['other', 'Someone else']] as const).map(([id, label]) => (
@@ -166,7 +185,7 @@ export default function ServiceScreen() {
           )}
 
           <Text style={s.h2}>Your vehicle</Text>
-          <Text style={s.helper}>Optional, but it helps your partner find you quickly.</Text>
+          <Text style={s.helper}>Optional, but it helps your TowberPro find you quickly.</Text>
           <View style={s.fields}>
             <Field label="Make & model" value={makeModel} onChangeText={setMakeModel} placeholder="e.g. Toyota Corolla" autoCapitalize="words" />
             <View>
@@ -244,6 +263,10 @@ const s = StyleSheet.create({
   fields: { gap: 14, marginTop: 14 },
   label: { color: L.text, fontFamily: font.semibold, fontSize: 13, marginBottom: 6 },
   input: { height: 52, borderRadius: 14, backgroundColor: L.surfaceRaised, paddingHorizontal: 16, color: L.text, fontFamily: font.medium, fontSize: 16 },
+  towRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  towChip: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 12, height: 40, borderRadius: 999, backgroundColor: L.surfaceRaised },
+  towChipOn: { backgroundColor: L.go },
+  towChipText: { color: L.text, fontFamily: font.medium, fontSize: 13 },
   swatches: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
   swatchWrap: { padding: 3, borderRadius: 999, borderWidth: 2, borderColor: 'transparent' },
   swatchWrapOn: { borderColor: L.go },

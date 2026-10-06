@@ -108,11 +108,11 @@ th{color:var(--mute);font-size:12px;font-weight:700}
 <script>
 const LOGO='<svg class="logo" viewBox="0 0 1024 1024" aria-label="Towber"><rect width="1024" height="1024" rx="228" fill="#222629"/><path d="M512 170C378 170 270 278 270 412c0 160 150 290 242 450 92-160 242-290 242-450C754 278 646 170 512 170Z" fill="#FFB300"/><g fill="none" stroke="#1E2022" stroke-width="44" stroke-linecap="round" stroke-linejoin="round"><circle cx="470" cy="296" r="30" stroke-width="30"/><path d="M470 346V410C470 484 522 530 580 530C632 530 664 492 664 446"/></g><path d="M664 446l-34 0 34-52 34 52z" fill="#1E2022"/></svg>';
 const IC={overview:'<path d="M3 11l9-8 9 8v9a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"/>',applications:'<path d="M9 4h6v3H9zM7 5H5a1 1 0 0 0-1 1v14a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1V6a1 1 0 0 0-1-1h-2"/><path d="M9 14l2 2 4-4"/>',partners:'<circle cx="9" cy="8" r="3.5"/><path d="M2.5 20c.6-3.6 3.2-5.5 6.5-5.5s5.9 1.9 6.5 5.5M16 4.6a3.5 3.5 0 0 1 0 6.8M18 14.8c2 .6 3.2 2.3 3.5 5"/>',ratings:'<path d="M12 3l2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.9 1-6.1L3.2 9.5l6.1-.9z"/>',requests:'<path d="M8 6h13M8 12h13M8 18h13M3.5 6h.01M3.5 12h.01M3.5 18h.01"/>',pricing:'<path d="M20 12l-8 8-9-9V3h8z"/><circle cx="7.5" cy="7.5" r="1.2"/>',settings:'<circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9L7 7M17 17l2.1 2.1M4.9 19.1L7 17M17 7l2.1-2.1"/>'};
-const TABS=[['overview','Overview'],['applications','Applications'],['partners','Partners'],['ratings','Ratings'],['requests','Requests'],['pricing','Pricing'],['settings','Team & log']];
+const TABS=[['overview','Overview'],['applications','Applications'],['partners','TowberPros'],['ratings','Ratings'],['requests','Requests'],['pricing','Pricing'],['settings','Team & log']];
 const SVC={flatbed:'Towing',jumpstart:'Jump start',lockout:'Lockout',fuel:'Fuel delivery',tyre:'Tyre change',repair:'Minor repair'};
-const DOCS={id_document:'ID / passport',drivers_license:"Driver's licence",prdp:'PrDP',vehicle_license_disc:'Vehicle licence disc',certificate_of_fitness:'Certificate of Fitness',towing_insurance:'Towing insurance',towing_permit:'Towing permit',trade_certificate:'Trade certificate',vehicle_photo:'Vehicle photo',equipment_photo:'Equipment photo'};
-const TIER={tow_operator:'Tow operator',roadside_responder:'Roadside responder'};
-const VT={flatbed_rollback:'Flatbed',standard_tow:'Standard tow',heavy_duty:'Heavy duty',winch_recovery:'Winch recovery',roadside_unit:'Roadside unit'};
+const DOCS={id_document:'ID / passport',drivers_license:"Driver's licence",prdp:'PrDP (Code 8/10 for winch)',vehicle_license_disc:'Vehicle licence disc',certificate_of_fitness:'Certificate of Fitness',towing_insurance:'Towing / GIT insurance',towing_permit:'Towing permit',trade_certificate:'Trade certificate',vehicle_photo:'Vehicle photo',equipment_photo:'Equipment / winch setup photo'};
+const TIER={tow_operator:'TowberPro (Towing)',roadside_responder:'TowberPro (Mobile Tech)'};
+const VT={flatbed_rollback:'Flatbed / Rollback',standard_tow:'Standard tow',heavy_duty:'Heavy duty',winch_recovery:'Winch Bakkie / Sling Tow',roadside_unit:'Roadside unit'};
 const $=(s,r=document)=>r.querySelector(s);
 const E=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const R=n=>n==null||n===''?'—':'R '+Math.round(Number(n)).toLocaleString('en-ZA').replace(/\s/g,' ');
@@ -172,7 +172,7 @@ async overview(){
   return head('Overview','Live picture of Towber across South Africa')+
    '<div class="grid g4">'+
    tile('Applications waiting',s.applications_pending,s.applications_pending?'hot':'','')+
-   tile('Verified partners',s.partners_verified+' <span class="mute sm b">of '+s.partners_total+'</span>')+
+   tile('Verified TowberPros',s.partners_verified+' <span class="mute sm b">of '+s.partners_total+'</span>')+
    tile('Vehicles online',s.vehicles_online)+
    tile('Open requests',s.requests_open)+
    tile('Completed (30 days)',s.completed_30d)+
@@ -186,7 +186,7 @@ async overview(){
 async applications(){
   const {applications:a}=await api('/api/admin/applications?status='+F.app);
   await pendingBadge();
-  return head('Partner applications','Check documents, then approve or decline')+
+  return head('TowberPro applications','Check documents, then approve or decline')+
    chips('app',[['open','Needs action'],['approved','Approved'],['rejected','Declined'],['all','All']])+
    (a.length?a.map(x=>'<button class="row" data-a="openapp" data-id="'+x.id+'"><div class="main"><div class="t">'+E(x.business_name)+'</div><div class="s">'+E(x.email||'No email')+' · '+E(TIER[x.partner_tier]||x.partner_tier)+' · '+x.documents+' document'+(x.documents===1?'':'s')+'</div><div class="tags">'+(x.capabilities||[]).map(c=>pill(SVC[c]||c,'grey')).join('')+'</div></div><div style="text-align:right">'+st(APPST,x.status)+'<div class="xs mute" style="margin-top:6px">'+D(x.submitted_at)+'</div></div></button>').join(''):'<div class="empty"><p class="b">Nothing here</p><p class="sm">No applications match this filter.</p></div>');
 },
@@ -194,7 +194,7 @@ async applications(){
 async partners(){
   const {partners:p}=await api('/api/admin/partners');
   CACHE.partners=p;
-  return head('Partners',p.length+' registered')+
+  return head('TowberPros',p.length+' registered')+
    (p.length?p.map(x=>'<button class="row" data-a="openpartner" data-id="'+x.company_id+'"><div class="main"><div class="t">'+E(x.company_name)+'</div><div class="s">'+E(x.owner_email||x.contact_phone||'')+' · '+x.vehicles_online+'/'+x.vehicles+' vehicles online · '+x.jobs_completed+'/'+x.jobs_total+' jobs done</div><div class="tags">'+(x.services||[]).map(c=>pill(SVC[c]||c,'grey')).join('')+'</div></div><div style="text-align:right">'+pill(x.is_verified?'Verified':'Suspended',x.is_verified?'green':'red')+'<div style="margin-top:6px">'+(x.rating_count?stars(Math.round(x.rating_avg))+' <span class="xs mute">'+(+x.rating_avg).toFixed(1)+' ('+x.rating_count+')</span>':'<span class="xs mute">No ratings</span>')+'</div></div></button>').join(''):'<div class="empty">No partners yet. Approve an application to create one.</div>');
 },
 
@@ -202,25 +202,25 @@ async ratings(){
   const q='?visibility='+F.rate+'&max='+F.rmax+(F.company?'&companyId='+F.company:'');
   const [{ratings:r},s]=await Promise.all([api('/api/admin/ratings'+q),api('/api/admin/stats')]);
   return head('Ratings',s.rating_count?'Average '+(+s.rating_avg).toFixed(2)+' from '+s.rating_count+' rating'+(s.rating_count===1?'':'s'):'No ratings yet')+
-   (F.company?'<div class="note">Showing one partner only. <button class="btn s" data-a="allpartners">Show all partners</button></div>':'')+chips('rate',[['visible','Visible'],['hidden','Hidden'],['all','All']])+chips('rmax',[[5,'All stars'],[3,'3 stars or less'],[2,'2 stars or less']])+
+   (F.company?'<div class="note">Showing one TowberPro only. <button class="btn s" data-a="allpartners">Show all TowberPros</button></div>':'')+chips('rate',[['visible','Visible'],['hidden','Hidden'],['all','All']])+chips('rmax',[[5,'All stars'],[3,'3 stars or less'],[2,'2 stars or less']])+
    (r.length?r.map(x=>'<div class="card" style="margin-bottom:10px"><div style="display:flex;justify-content:space-between;gap:10px;align-items:center">'+stars(x.rating)+'<span class="xs mute">'+D(x.created_at)+'</span></div>'+(x.comment?'<p style="margin:8px 0;font-size:15px">“'+E(x.comment)+'”</p>':'<p class="mute sm" style="margin:8px 0">No comment left</p>')+'<div style="display:flex;justify-content:space-between;gap:10px;align-items:center;flex-wrap:wrap"><span class="sm mute">'+E(x.company_name||'Unknown partner')+(x.vehicle_registration?' · '+E(x.vehicle_registration):'')+' · by '+E(x.rater_email||'guest')+'</span><span>'+(x.admin_hidden?pill('Hidden','grey')+' ':'')+'<button class="btn s" data-a="hide" data-id="'+x.rating_id+'" data-h="'+(x.admin_hidden?0:1)+'">'+(x.admin_hidden?'Show again':'Hide')+'</button></span></div></div>').join(''):'<div class="empty">No ratings match this filter.</div>');
 },
 
 async requests(){
   const {requests:r}=await api('/api/admin/requests?status='+F.req);
   return head('Requests','Most recent 150')+chips('req',[['all','All'],['open','Open'],['completed','Completed'],['closed','Cancelled / expired']])+
-   (r.length?'<div class="card scroll"><table><tr><th>Status</th><th>Service</th><th>Partner</th><th>Price</th><th>When</th></tr>'+r.map(x=>'<tr><td>'+st(REQST,x.status)+'</td><td>'+E(SVC[x.breakdown_type]||x.breakdown_type||'—')+'<div class="xs mute">'+E(x.contact_name||'')+' '+E(x.vehicle_registration||'')+'</div></td><td>'+E(x.companyName||'—')+'</td><td class="b">'+R(x.final_price??x.estimated_price_max)+(x.fare_surcharge_label?'<div class="xs mute">'+E(x.fare_surcharge_label)+'</div>':'')+'</td><td class="xs mute">'+D(x.created_at)+'</td></tr>').join('')+'</table></div>':'<div class="empty">No requests match this filter.</div>');
+   (r.length?'<div class="card scroll"><table><tr><th>Status</th><th>Service</th><th>TowberPro</th><th>Price</th><th>When</th></tr>'+r.map(x=>'<tr><td>'+st(REQST,x.status)+'</td><td>'+E(SVC[x.breakdown_type]||x.breakdown_type||'—')+'<div class="xs mute">'+E(x.contact_name||'')+' '+E(x.vehicle_registration||'')+'</div></td><td>'+E(x.companyName||'—')+'</td><td class="b">'+R(x.final_price??x.estimated_price_max)+(x.fare_surcharge_label?'<div class="xs mute">'+E(x.fare_surcharge_label)+'</div>':'')+'</td><td class="xs mute">'+D(x.created_at)+'</td></tr>').join('')+'</table></div>':'<div class="empty">No requests match this filter.</div>');
 },
 
 async pricing(){
   const p=CACHE.pricing=await api('/api/admin/pricing');
   const fee=c=>(p.flatRates.find(x=>x.service_code===c)||{}).flat_fee_zar;
   const ah=p.afterHours||{after_hours_start:'20:00:00',after_hours_end:'05:00:00',after_hours_multiplier:1};
-  return head('Pricing','Platform defaults. A partner can override these on its own page.')+
+  return head('Pricing','Platform defaults. A TowberPro can override these on its own page.')+
    '<div class="card"><h2>Flat fees</h2><p class="sm mute" style="margin:2px 0 12px">A service with no price is not offered to motorists. Leave blank to remove.</p>'+
    p.services.map(c=>'<div style="display:flex;gap:10px;align-items:flex-end;margin-bottom:6px"><label style="flex:1;margin:0">'+SVC[c]+' (R)<input id="ff-'+c+'" inputmode="decimal" value="'+E(fee(c)??'')+'" placeholder="Not set"></label><button class="btn dark" data-a="saveflat" data-c="'+c+'" data-co="">Save</button></div>').join('')+'</div>'+
    '<div class="card" style="margin-top:14px"><h2>After-hours surcharge</h2><p class="sm mute" style="margin:2px 0 12px">South African time. A multiplier of 1.00 means no surcharge.</p><div class="grid g3"><label>From<input id="ah-s" type="time" value="'+E(ah.after_hours_start.slice(0,5))+'"></label><label>Until<input id="ah-e" type="time" value="'+E(ah.after_hours_end.slice(0,5))+'"></label><label>Multiplier<input id="ah-m" inputmode="decimal" value="'+E(ah.after_hours_multiplier)+'"></label></div><button class="btn dark" data-a="saveah">Save after-hours rate</button></div>'+
-   '<div class="note">Towing is priced per partner (call-out + per-km + minimum). Open a partner under <b>Partners</b> to set it.</div>';
+   '<div class="note">Towing is priced per TowberPro (call-out + per-km + minimum). Open a TowberPro under <b>TowberPros</b> to set it.</div>';
 },
 
 async settings(){
@@ -260,19 +260,19 @@ async function openPartner(id){
   CACHE.pricing=p;CACHE.pd=d;
   const row=(CACHE.partners||[]).find(x=>x.company_id===id)||{services:[]};
   const c=d.company,tr=d.towRates;
-  const flatEff=s=>{const o=d.flatRates.find(x=>x.service_code===s),g=p.flatRates.find(x=>x.service_code===s);return o?[o.flat_fee_zar,'partner override']:g?[g.flat_fee_zar,'platform default']:[null,'']};
+  const flatEff=s=>{const o=d.flatRates.find(x=>x.service_code===s),g=p.flatRates.find(x=>x.service_code===s);return o?[o.flat_fee_zar,'TowberPro override']:g?[g.flat_fee_zar,'platform default']:[null,'']};
   const svcs=(row.services||[]);
   const warn=[];
-  if(svcs.includes('flatbed')&&!tr.length)warn.push('No towing rate set, so this partner will not be offered for towing.');
+  if(svcs.includes('flatbed')&&!tr.length)warn.push('No towing rate set, so this TowberPro will not be offered for towing.');
   svcs.filter(s=>s!=='flatbed').forEach(s=>{if(flatEff(s)[0]==null)warn.push(SVC[s]+' has no price, so it is not offered.')});
   const cls=p.towClasses;
   $('#sheetBody').innerHTML='<h1 style="font-size:22px">'+E(c.company_name)+'</h1><div class="tags" style="margin-bottom:6px">'+pill(c.is_verified?'Verified':'Suspended',c.is_verified?'green':'red')+svcs.map(s=>pill(SVC[s]||s,'grey')).join('')+'</div>'+
    '<div class="card sec"><dl class="kv"><dt>Registration</dt><dd>'+E(c.registration_number)+'</dd><dt>Phone</dt><dd>'+E(c.contact_phone||'—')+'</dd><dt>Owner</dt><dd>'+E(row.owner_email||'—')+'</dd><dt>Rating</dt><dd>'+(row.rating_count?stars(Math.round(row.rating_avg))+' '+(+row.rating_avg).toFixed(2)+' ('+row.rating_count+')':'No ratings yet')+'</dd><dt>Jobs</dt><dd>'+(row.jobs_completed||0)+' completed of '+(row.jobs_total||0)+'</dd></dl>'+
-   '<div class="actions">'+(c.is_verified?'<button class="btn bad" data-a="verify" data-id="'+id+'" data-v="0">Suspend partner</button>':'<button class="btn go" data-a="verify" data-id="'+id+'" data-v="1">Re-verify partner</button>')+'<button class="btn" data-a="partnerratings" data-id="'+id+'">See ratings</button></div></div>'+
+   '<div class="actions">'+(c.is_verified?'<button class="btn bad" data-a="verify" data-id="'+id+'" data-v="0">Suspend TowberPro</button>':'<button class="btn go" data-a="verify" data-id="'+id+'" data-v="1">Re-verify partner</button>')+'<button class="btn" data-a="partnerratings" data-id="'+id+'">See ratings</button></div></div>'+
    (warn.length?'<div class="note">'+warn.map(E).join('<br>')+'</div>':'')+
    '<div class="card sec"><h2>Vehicles</h2>'+(d.vehicles.length?d.vehicles.map(v=>'<div class="doc"><div style="flex:1"><div class="b">'+E(v.registration_number)+'</div><div class="xs mute">'+E(VT[v.vehicle_type]||v.vehicle_type)+' · seen '+D(v.updated_at)+'</div></div>'+pill(v.is_active?'Online':'Offline',v.is_active?'green':'grey')+'</div>').join(''):'<p class="mute sm">No vehicles.</p>')+'</div>'+
    '<div class="card sec"><h2>Towing rate</h2><p class="sm mute" style="margin:2px 0 10px">Price = call-out + per-km × distance, never below the minimum.</p><label>Truck class<select id="tr-c">'+cls.map(k=>'<option value="'+E(k.code)+'">'+E(k.display_name)+'</option>').join('')+'</select></label><div class="grid g3"><label>Call-out (R)<input id="tr-a" inputmode="decimal"></label><label>Per km (R)<input id="tr-k" inputmode="decimal"></label><label>Minimum (R)<input id="tr-m" inputmode="decimal"></label></div><button class="btn dark" data-a="savetow" data-id="'+id+'">Save towing rate</button></div>'+
-   '<div class="card sec"><h2>Flat fees for this partner</h2><p class="sm mute" style="margin:2px 0 10px">Blank = use the platform default.</p>'+p.services.map(s=>{const o=d.flatRates.find(x=>x.service_code===s),e=flatEff(s);return '<div style="display:flex;gap:10px;align-items:flex-end;margin-bottom:6px"><label style="flex:1;margin:0">'+SVC[s]+' (R) <span class="xs">'+(e[0]!=null?'now '+R(e[0])+', '+e[1]:'not priced')+'</span><input id="ff-'+s+'" inputmode="decimal" value="'+E(o?o.flat_fee_zar:'')+'" placeholder="Platform default"></label><button class="btn dark" data-a="saveflat" data-c="'+s+'" data-co="'+id+'">Save</button></div>'}).join('')+'</div>';
+   '<div class="card sec"><h2>Flat fees for this TowberPro</h2><p class="sm mute" style="margin:2px 0 10px">Blank = use the platform default.</p>'+p.services.map(s=>{const o=d.flatRates.find(x=>x.service_code===s),e=flatEff(s);return '<div style="display:flex;gap:10px;align-items:flex-end;margin-bottom:6px"><label style="flex:1;margin:0">'+SVC[s]+' (R) <span class="xs">'+(e[0]!=null?'now '+R(e[0])+', '+e[1]:'not priced')+'</span><input id="ff-'+s+'" inputmode="decimal" value="'+E(o?o.flat_fee_zar:'')+'" placeholder="Platform default"></label><button class="btn dark" data-a="saveflat" data-c="'+s+'" data-co="'+id+'">Save</button></div>'}).join('')+'</div>';
   fillTow();
 }
 function fillTow(){const sel=$('#tr-c');if(!sel)return;const r=(CACHE.pd.towRates||[]).find(x=>x.service_class_code===sel.value);$('#tr-a').value=r?r.callout_fee_zar:'';$('#tr-k').value=r?r.per_km_rate_zar:'';$('#tr-m').value=r?r.minimum_fare_zar:''}
@@ -291,9 +291,9 @@ const ACT={
  openapp:b=>openApp(b.dataset.id).catch(e=>{closeSheet();toast(e.message,true)}),
  openpartner:b=>openPartner(b.dataset.id).catch(e=>{closeSheet();toast(e.message,true)}),
  doc:b=>run(b,async()=>{let reason;if(b.dataset.s==='rejected'){reason=prompt('What is wrong with this document? (optional)')??undefined;if(reason===undefined)return}await api('/api/admin/documents/'+b.dataset.id+'/review',{method:'POST',body:{status:b.dataset.s,reason}});toast('Document marked');await openApp(b.dataset.app)}),
- approve:b=>run(b,async()=>{if(!confirm('Approve this partner? They can start taking jobs once their prices are set.'))return;const r=await api('/api/admin/applications/'+b.dataset.id+'/approve',{method:'POST',body:{notes:$('#dn').value}});closeSheet();toast('Approved. Now set their prices under Partners.');CACHE.partners=null;await refreshAll()}),
+ approve:b=>run(b,async()=>{if(!confirm('Approve this TowberPro? They can start taking jobs once their prices are set.'))return;const r=await api('/api/admin/applications/'+b.dataset.id+'/approve',{method:'POST',body:{notes:$('#dn').value}});closeSheet();toast('Approved. Now set their prices under Partners.');CACHE.partners=null;await refreshAll()}),
  decide:b=>run(b,async()=>{const n=$('#dn').value.trim();if(n.length<3){toast('Add a short note so the applicant knows what to do.',true);return}const rej=b.dataset.d==='rejected';if(rej&&!confirm('Decline this application? The applicant will see your note.'))return;await api('/api/admin/applications/'+b.dataset.id+'/decision',{method:'POST',body:{decision:b.dataset.d,notes:n}});closeSheet();toast(rej?'Application declined':'Changes requested');await refreshAll()}),
- verify:b=>run(b,async()=>{const v=b.dataset.v==='1';if(!v&&!confirm('Suspend this partner? All their vehicles go offline immediately.'))return;await api('/api/admin/partners/'+b.dataset.id+'/verify',{method:'POST',body:{verified:v}});toast(v?'Partner verified':'Partner suspended');const p=await api('/api/admin/partners');CACHE.partners=p.partners;await openPartner(b.dataset.id);if(tab==='partners')load()}),
+ verify:b=>run(b,async()=>{const v=b.dataset.v==='1';if(!v&&!confirm('Suspend this TowberPro? All their vehicles go offline immediately.'))return;await api('/api/admin/partners/'+b.dataset.id+'/verify',{method:'POST',body:{verified:v}});toast(v?'Partner verified':'Partner suspended');const p=await api('/api/admin/partners');CACHE.partners=p.partners;await openPartner(b.dataset.id);if(tab==='partners')load()}),
  partnerratings:b=>{closeSheet();F.rate='all';F.rmax=5;F.company=b.dataset.id;tab='ratings';render()},
  allpartners:()=>{F.company=null;load()},
  savetow:b=>run(b,async()=>{const [a,k,m]=['tr-a','tr-k','tr-m'].map(num);if([a,k,m].some(Number.isNaN)){toast('Fill in all three amounts.',true);return}await api('/api/admin/pricing/tow-rate',{method:'POST',body:{companyId:b.dataset.id,serviceClass:$('#tr-c').value,calloutFee:a,perKm:k,minimum:m}});toast('Towing rate saved');await openPartner(b.dataset.id)}),

@@ -2,6 +2,7 @@ import type { ExpoConfig } from 'expo/config';
 
 const config: ExpoConfig = {
   name: 'Towber',
+  description: 'Fast Roadside & Towing.',
   slug: 'towber-ralph',
   scheme: 'towber',
   version: '1.0.0',
