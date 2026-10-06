@@ -7,6 +7,7 @@ import { StatusBar } from 'expo-status-bar';
 
 import { supabase } from '../../../src/api';
 import { loadRequestMessages, sendRequestMessage, subscribeToRequestMessages, type RequestMessage } from '../../../src/chat';
+import { playIncomingChatAlert, releaseIncomingChatAlert } from '../../../src/chatAlert';
 import { font, light as L } from '../../../src/theme';
 
 export default function RequestChatScreen() {
@@ -20,6 +21,7 @@ export default function RequestChatScreen() {
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [realtimeReady, setRealtimeReady] = useState(false);
   const listRef = useRef<FlatList<RequestMessage>>(null);
 
   useEffect(() => {
@@ -35,7 +37,19 @@ export default function RequestChatScreen() {
       setUserId(session.data.session?.user.id ?? null);
       return subscribeToRequestMessages(requestId, (message) => {
         if (!active) return;
-        setMessages((previous) => previous.some((item) => item.id === message.id) ? previous : [...previous, message]);
+        setMessages((previous) => {
+          if (previous.some((item) => item.id === message.id)) return previous;
+          if (message.sender_user_id !== session.data.session?.user.id) void playIncomingChatAlert();
+          return [...previous, message];
+        });
+      }, (status) => {
+        if (!active) return;
+        setRealtimeReady(status === 'SUBSCRIBED');
+        if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
+          setError('Live chat connection interrupted. Retrying…');
+        } else if (status === 'SUBSCRIBED') {
+          setError(null);
+        }
       });
     }).then((stop) => { if (active) unsubscribe = stop; else stop?.(); })
       .catch((caught) => { if (active) setError(caught instanceof Error ? caught.message : 'Could not load chat.'); })
@@ -51,7 +65,7 @@ export default function RequestChatScreen() {
         });
       }).catch(() => undefined);
     }, 4000);
-    return () => { active = false; clearInterval(poll); unsubscribe?.(); };
+    return () => { active = false; clearInterval(poll); unsubscribe?.(); releaseIncomingChatAlert(); };
   }, [requestId]);
 
   const send = async () => {
@@ -97,7 +111,7 @@ export default function RequestChatScreen() {
           ListEmptyComponent={<View style={s.empty}><Ionicons name="chatbubble-ellipses-outline" size={30} color={L.go} /><Text style={s.emptyTitle}>Start the conversation</Text><Text style={s.emptyBody}>Send {peerLabel} an update, arrival note or question.</Text></View>}
         />
       )}
-      {error ? <Text style={s.error}>{error}</Text> : null}
+      {error ? <Text style={s.error}>{error}</Text> : !realtimeReady && !loading ? <Text style={s.liveStatus}>Connecting to live chat…</Text> : null}
       <View style={[s.composer, { paddingBottom: Math.max(bottom, 10) + 8 }]}>
         <TextInput
           accessibilityLabel="Message"
@@ -140,6 +154,7 @@ const s = StyleSheet.create({
   emptyBody: { color: L.textMuted, fontFamily: font.medium, fontSize: 13, lineHeight: 18, textAlign: 'center' },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   error: { color: L.danger, fontFamily: font.medium, fontSize: 12, paddingHorizontal: 16, paddingBottom: 4 },
+  liveStatus: { color: L.textMuted, fontFamily: font.medium, fontSize: 12, paddingHorizontal: 16, paddingBottom: 4 },
   composer: { flexDirection: 'row', alignItems: 'flex-end', gap: 10, paddingHorizontal: 14, paddingTop: 10, backgroundColor: L.surface, borderTopWidth: 1, borderTopColor: L.border },
   input: { flex: 1, minHeight: 44, maxHeight: 110, borderRadius: 18, backgroundColor: L.surfaceRaised, paddingHorizontal: 14, paddingVertical: 11, color: L.text, fontFamily: font.medium, fontSize: 14 },
   send: { width: 44, height: 44, borderRadius: 22, backgroundColor: L.go, alignItems: 'center', justifyContent: 'center' },

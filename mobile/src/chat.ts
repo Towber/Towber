@@ -35,13 +35,19 @@ export async function sendRequestMessage(requestId: string, body: string) {
   return data as RequestMessage;
 }
 
-export async function subscribeToRequestMessages(requestId: string, onMessage: (message: RequestMessage) => void) {
+type ChatChannelStatus = 'SUBSCRIBED' | 'TIMED_OUT' | 'CHANNEL_ERROR' | 'CLOSED';
+
+export function subscribeToRequestMessages(
+  requestId: string,
+  onMessage: (message: RequestMessage) => void,
+  onStatus?: (status: ChatChannelStatus) => void,
+) {
   const channel = supabase
     .channel(`request-chat:${requestId}`)
     .on('postgres_changes', {
       event: 'INSERT', schema: 'public', table: 'request_messages', filter: `request_id=eq.${requestId}`,
     }, (payload) => onMessage(payload.new as RequestMessage))
-    .subscribe();
+    .subscribe((status) => onStatus?.(status as ChatChannelStatus));
   return () => { void supabase.removeChannel(channel); };
 }
 
