@@ -19,6 +19,7 @@ import { TruckCard, TruckCardSkeleton, CARD_WIDTH } from '../../../src/component
 import { TruckMarker } from '../../../src/components/TruckMarker';
 import { loadMyRating, submitRequestRating } from '../../../src/chat';
 import { SafetyVerificationPanel } from '../../../src/components/SafetyVerificationPanel';
+import { friendlyError, showNotice } from '../../../src/userMessage';
 
 // Johannesburg CBD fallback if location permission is denied
 const FALLBACK: LatLng = { lat: -26.2041, lng: 28.0473 };
@@ -144,7 +145,7 @@ export default function HomeScreen() {
         .catch((error: unknown) => {
           if (current) {
             setPlaceSuggestions([]);
-            setSearchError(error instanceof Error ? error.message : 'Address search is unavailable. Try again.');
+            setSearchError(friendlyError(error, 'Address search is unavailable. Please try again.'));
           }
         })
         .finally(() => { if (current) setSuggesting(false); });
@@ -159,7 +160,7 @@ export default function HomeScreen() {
       setTrucks(await fetchNearby(me, tripKm, breakdownType));
       setQuoteDistanceKm(tripKm);
     } catch (e: any) {
-      Alert.alert('Could not load nearby TowberPros', e.message ?? 'Check your connection and try again.');
+      showNotice('Nearby help unavailable', friendlyError(e, 'We could not load nearby TowberPros. Check your connection and try again.'));
     } finally {
       setLoading(false);
     }
@@ -325,7 +326,7 @@ export default function HomeScreen() {
         setDest(null);
         setRoute(null);
       }
-      setSearchError(error instanceof Error ? error.message : 'Could not build a driving route. Try another destination.');
+      setSearchError(friendlyError(error, 'We could not build a route. Try another destination.'));
     } finally {
       setSearching(false);
     }
@@ -351,7 +352,7 @@ export default function HomeScreen() {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     } catch (e: any) {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-      Alert.alert('Request failed', e.message);
+      showNotice('Request not sent', friendlyError(e, 'We could not send your request. Please check your connection and try again.'));
     } finally {
       setRequesting(false);
     }
@@ -361,7 +362,7 @@ export default function HomeScreen() {
   // drivers use, so the server owns the race between cancel and accept.
   const cancelActiveRequest = () => {
     if (!activeRequestId || cancelling) return;
-    Alert.alert('Cancel this tow request?', 'The assigned truck is released and you can request a new tow.', [
+    showNotice('Cancel this tow request?', 'The assigned truck is released and you can request a new tow.', [
       { text: 'Keep request', style: 'cancel' },
       {
         text: 'Cancel request',
@@ -375,7 +376,7 @@ export default function HomeScreen() {
               Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
             })
             .catch((error: unknown) => {
-              Alert.alert('Could not cancel', error instanceof Error ? error.message : 'Try again.');
+              showNotice('Request still active', friendlyError(error, 'We could not cancel the request. Please try again.'));
             })
             .finally(() => setCancelling(false));
         },
@@ -396,7 +397,7 @@ export default function HomeScreen() {
 
   const callEmergencyServices = () => {
     setDrawerVisible(false);
-    void Linking.openURL('tel:112').catch(() => Alert.alert('Unable to place call', 'Call emergency services at 112.'));
+    void Linking.openURL('tel:112').catch(() => showNotice('Call unavailable', 'Please call emergency services at 112.'));
   };
 
   const saveRating = async () => {
@@ -407,7 +408,7 @@ export default function HomeScreen() {
       setRatingSaved(true);
       setRatingVisible(false);
     } catch (error) {
-      Alert.alert('Could not save rating', error instanceof Error ? error.message : 'Please try again.');
+      showNotice('Rating not saved', friendlyError(error, 'We could not save your rating. Please try again.'));
     } finally { setRatingSaving(false); }
   };
 

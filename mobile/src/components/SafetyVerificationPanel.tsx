@@ -5,6 +5,7 @@ import { useRouter } from 'expo-router';
 import { supabase } from '../api';
 import { loadLatestSafetyVerification, requestSafetyVerification, subscribeToSafetyVerification, type SafetyVerification } from '../safety';
 import { font, light as L } from '../theme';
+import { friendlyError, showNotice } from '../userMessage';
 
 export function SafetyVerificationPanel({ requestId }: { requestId: string }) {
   const router = useRouter();
@@ -44,7 +45,7 @@ export function SafetyVerificationPanel({ requestId }: { requestId: string }) {
       const next = await requestSafetyVerification(requestId);
       setVerification(next);
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : 'Could not request a safety scan.');
+      setError(friendlyError(caught, 'We could not request a safety scan. Please try again.'));
     } finally { setRequesting(false); }
   };
 
@@ -54,7 +55,7 @@ export function SafetyVerificationPanel({ requestId }: { requestId: string }) {
     router.push({ pathname: '/safety/verify', params: { verificationId: verification.id } });
   };
 
-  const callSafety = () => { void Linking.openURL('tel:112').catch(() => Alert.alert('Unable to place call', 'Call emergency services at 112.')); };
+  const callSafety = () => { void Linking.openURL('tel:112').catch(() => showNotice('Call unavailable', 'Please call emergency services at 112.')); };
   const pendingForMe = verification?.status === 'pending' && verification.target_user === userId;
   const pendingForOther = verification?.status === 'pending' && verification.requested_by === userId;
   const active = verification?.status === 'pending' || verification?.status === 'failed' || verification?.status === 'timed_out';

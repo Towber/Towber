@@ -11,6 +11,7 @@ import { TOWBERPRO as PARTNER } from '../../../src/copy';
 import { STATUS_COPY, type ApplicationStatus } from '../../../src/partnerOnboarding';
 import { SERVICES, TOW_TYPE_OPTIONS, getDraft, setDraft, type TowTypeFilter } from '../../../src/requestDraft';
 import { font, light as L } from '../../../src/theme';
+import { friendlyError, showNotice } from '../../../src/userMessage';
 
 const COLORS: { name: string; hex: string }[] = [
   { name: 'White', hex: '#FFFFFF' }, { name: 'Black', hex: '#111111' }, { name: 'Silver', hex: '#C0C4CC' },
@@ -98,11 +99,11 @@ export default function ServiceScreen() {
     router.push('/(main)/client/map');
   };
 
-  const sos = () => { void Linking.openURL('tel:112').catch(() => Alert.alert('Unable to place call', 'Call emergency services at 112.')); };
+  const sos = () => { void Linking.openURL('tel:112').catch(() => showNotice('Call unavailable', 'Please call emergency services at 112.')); };
   const logout = async () => {
     setDraft(null);
     const { error } = await supabase.auth.signOut();
-    if (error) Alert.alert('Could not sign out', error.message);
+    if (error) showNotice('Sign out unavailable', friendlyError(error, 'We could not sign you out. Please try again.'));
   };
 
   return (

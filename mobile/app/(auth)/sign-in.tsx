@@ -18,6 +18,7 @@ import { supabase } from '../../src/api';
 import { BRAND, TOWBERPRO as PARTNER } from '../../src/copy';
 import { setPartnerIntent } from '../../src/partnerIntent';
 import { font, light as L } from '../../src/theme';
+import { friendlyError } from '../../src/userMessage';
 
 export default function SignInScreen() {
   const [email, setEmail] = useState('');
@@ -55,7 +56,7 @@ export default function SignInScreen() {
       setSentTo(normalizedEmail);
       setSentForApplication(isNewPartner);
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : 'Could not send the sign-in link. Try again.');
+      setError(friendlyError(caught, 'We could not send the sign-in link. Please try again.'));
     } finally {
       setSendingLink(false);
     }
@@ -68,7 +69,7 @@ export default function SignInScreen() {
       const { error: signInError } = await supabase.auth.signInAnonymously();
       if (signInError) throw signInError;
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : 'Could not start a guest session.');
+      setError(friendlyError(caught, 'We could not start a guest session. Please try again.'));
     } finally {
       setStartingGuest(false);
     }

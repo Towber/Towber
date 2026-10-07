@@ -6,6 +6,7 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { completeSafetyVerification } from '../../src/safety';
 import { font, light as L } from '../../src/theme';
+import { friendlyError, showNotice } from '../../src/userMessage';
 
 export default function SafetyVerifyScreen() {
   const router = useRouter();
@@ -39,13 +40,13 @@ export default function SafetyVerifyScreen() {
     try {
       const result = await completeSafetyVerification(verificationId, passed);
       if (result.status === 'verified') {
-        Alert.alert('Verification complete', 'Your identity scan passed. The trip now shows as verified.', [{ text: 'Continue', onPress: () => router.back() }]);
+        showNotice('Verification complete', 'Your identity scan passed. The trip now shows as verified.', [{ text: 'Continue', onPress: () => router.back() }]);
       } else {
-        Alert.alert('Safety alert raised', message ?? result.failure_reason ?? 'The verification did not pass.', [{ text: 'Return', onPress: () => router.back() }]);
+        showNotice('Safety alert raised', message ?? result.failure_reason ?? 'The verification did not pass.', [{ text: 'Return', onPress: () => router.back() }]);
       }
     } catch (error) {
       setSubmitting(false);
-      Alert.alert('Could not submit verification', error instanceof Error ? error.message : 'Please try again.');
+      showNotice('Verification not submitted', friendlyError(error, 'We could not submit the verification. Please try again.'));
     }
   };
 

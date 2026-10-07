@@ -9,10 +9,9 @@ import { useFonts, PlusJakartaSans_400Regular, PlusJakartaSans_500Medium, PlusJa
 import type { Session } from '@supabase/supabase-js';
 
 import { supabase } from '../src/api';
-import { subscribeToIncomingMessages, type RequestMessage } from '../src/chat';
-import { playIncomingChatAlert } from '../src/chatAlert';
 import { hasPartnerIntent } from '../src/partnerIntent';
 import { colors, font } from '../src/theme';
+import { friendlyError } from '../src/userMessage';
 
 type AppRole = 'client' | 'driver';
 type AuthState =
@@ -28,9 +27,6 @@ export default function RootLayout() {
   const inAuthCallback = segments[0] === 'auth' && segments[1] === 'callback';
   const [authState, setAuthState] = useState<AuthState>({ status: 'loading' });
   const [retry, setRetry] = useState(0);
-  const [incomingMessage, setIncomingMessage] = useState<RequestMessage | null>(null);
-  const segmentsRef = useRef(segments);
-  segmentsRef.current = segments;
   const slotShown = useRef(false);
   const [fontsLoaded] = useFonts({
     PlusJakartaSans_400Regular,
@@ -70,7 +66,7 @@ export default function RootLayout() {
         if (active && request === generation) setAuthState({ status: 'ready', role: profile.role });
         return profile.role;
       } catch (error) {
-        const message = error instanceof Error ? error.message : 'Could not load your Towber profile.';
+        const message = friendlyError(error, 'We could not load your Towber profile. Please try again.');
         if (active && request === generation) setAuthState({ status: 'error', message });
         return null;
       }
@@ -131,24 +127,6 @@ export default function RootLayout() {
     };
   }, [inAuthCallback, router]);
 
-  // Keep chat alerts active while the user is on the map, active job, or any
-  // other authenticated route. The chat screen remains responsible for
-  // rendering the message itself; this shell owns the cross-app alert.
-  useEffect(() => {
-    if (authState.status !== 'ready') return;
-    let active = true;
-    let unsubscribe: (() => void) | undefined;
-    void supabase.auth.getSession().then(({ data }) => {
-      if (!active || !data.session) return;
-      unsubscribe = subscribeToIncomingMessages((message) => {
-        if (!active || message.sender_user_id === data.session?.user.id) return;
-        void playIncomingChatAlert();
-        if (segmentsRef.current[1] !== 'chat') setIncomingMessage(message);
-      });
-    });
-    return () => { active = false; unsubscribe?.(); };
-  }, [authState.status]);
-
   // Where the auth state says we should be (null = stay put).
   let redirectTo: '/(auth)/sign-in' | '/(main)/driver' | '/(main)/client' | null = null;
   if (!inAuthCallback) {
@@ -177,40 +155,12 @@ export default function RootLayout() {
   return (
     <AppFrame>
       <Slot />
-      {incomingMessage && segmentsRef.current[1] !== 'chat' ? (
-        <IncomingChatBanner
-          message={incomingMessage}
-          onOpen={() => {
-            const requestId = incomingMessage.request_id;
-            setIncomingMessage(null);
-            router.push({ pathname: '/(main)/chat/[requestId]', params: { requestId } });
-          }}
-          onDismiss={() => setIncomingMessage(null)}
-        />
-      ) : null}
       {redirectTo ? <Redirect href={redirectTo} /> : null}
       {!inAuthCallback && authState.status === 'loading' ? <View style={StyleSheet.absoluteFill}><LoadingScreen /></View> : null}
       {!inAuthCallback && authState.status === 'error' ? (
         <View style={StyleSheet.absoluteFill}><ErrorScreen message={authState.message} onRetry={() => setRetry((value) => value + 1)} /></View>
       ) : null}
     </AppFrame>
-  );
-}
-
-function IncomingChatBanner({ message, onOpen, onDismiss }: { message: RequestMessage; onOpen: () => void; onDismiss: () => void }) {
-  return (
-    <View pointerEvents="box-none" style={styles.bannerWrap}>
-      <Pressable accessibilityRole="button" accessibilityLabel="Open incoming chat message" onPress={onOpen} style={styles.banner}>
-        <View style={styles.bannerIcon}><Text style={styles.bannerIconText}>●</Text></View>
-        <View style={styles.bannerCopy}>
-          <Text style={styles.bannerTitle}>New Towber message</Text>
-          <Text style={styles.bannerBody} numberOfLines={2}>{message.body}</Text>
-        </View>
-        <Pressable accessibilityRole="button" accessibilityLabel="Dismiss message alert" onPress={onDismiss} style={styles.bannerClose}>
-          <Text style={styles.bannerCloseText}>×</Text>
-        </Pressable>
-      </Pressable>
-    </View>
   );
 }
 
@@ -252,7 +202,7 @@ function authHint(message: string) {
 }
 
 function LoadingScreen() {
-  return <View style={styles.loading}><ActivityIndicator size="large" color={colors.go} /><Text style={styles.loadingText}>Loading Towber…</Text></View>;
+  return <View style={styles.loading}><ActivityIndicator size="large" color={colors.go} /><Text style={styles.loadingText}>Loading Towber</Text></View>;
 }
 
 const styles = StyleSheet.create({
@@ -267,13 +217,4 @@ const styles = StyleSheet.create({
   retryText: { color: colors.bg, fontFamily: font.bold, fontSize: 15 },
   textButton: { padding: 10 },
   textButtonLabel: { color: colors.textMuted, fontFamily: font.medium, fontSize: 13 },
-  bannerWrap: { position: 'absolute', top: 48, left: 14, right: 14, zIndex: 100 },
-  banner: { minHeight: 68, borderRadius: 18, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, padding: 12, flexDirection: 'row', alignItems: 'center', gap: 10, elevation: 8, shadowColor: '#000', shadowOpacity: 0.16, shadowRadius: 12, shadowOffset: { width: 0, height: 4 } },
-  bannerIcon: { width: 34, height: 34, borderRadius: 17, backgroundColor: colors.surfaceRaised, alignItems: 'center', justifyContent: 'center' },
-  bannerIconText: { color: colors.go, fontSize: 15 },
-  bannerCopy: { flex: 1, gap: 3 },
-  bannerTitle: { color: colors.text, fontFamily: font.bold, fontSize: 13 },
-  bannerBody: { color: colors.textMuted, fontFamily: font.medium, fontSize: 12, lineHeight: 17 },
-  bannerClose: { width: 28, height: 28, alignItems: 'center', justifyContent: 'center' },
-  bannerCloseText: { color: colors.textMuted, fontFamily: font.regular, fontSize: 24, lineHeight: 24 },
 });

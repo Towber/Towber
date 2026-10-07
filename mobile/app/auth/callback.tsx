@@ -5,6 +5,7 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { supabase } from '../../src/api';
 import { hasPartnerIntent } from '../../src/partnerIntent';
 import { colors, font } from '../../src/theme';
+import { friendlyError } from '../../src/userMessage';
 
 type AppRole = 'client' | 'driver';
 
@@ -60,7 +61,7 @@ export default function AuthCallbackScreen() {
       .catch((caught: unknown) => {
         if (!active) return;
         setFailed(true);
-        setMessage(caught instanceof Error ? caught.message : 'Could not finish sign-in. Request a new link and try again.');
+        setMessage(friendlyError(caught, 'We could not finish sign-in. Request a new link and try again.'));
       });
 
     return () => { active = false; };

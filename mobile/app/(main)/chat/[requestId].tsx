@@ -7,7 +7,9 @@ import { StatusBar } from 'expo-status-bar';
 
 import { supabase } from '../../../src/api';
 import { loadRequestMessages, sendRequestMessage, subscribeToRequestMessages, type RequestMessage } from '../../../src/chat';
+import { playIncomingChatAlert, releaseIncomingChatAlert } from '../../../src/chatAlert';
 import { font, light as L } from '../../../src/theme';
+import { friendlyError } from '../../../src/userMessage';
 
 export default function RequestChatScreen() {
   const router = useRouter();
@@ -38,6 +40,7 @@ export default function RequestChatScreen() {
         if (!active) return;
         setMessages((previous) => {
           if (previous.some((item) => item.id === message.id)) return previous;
+          if (message.sender_user_id !== session.data.session?.user.id) void playIncomingChatAlert();
           return [...previous, message];
         });
       }, (status) => {
@@ -50,7 +53,7 @@ export default function RequestChatScreen() {
         }
       });
     }).then((stop) => { if (active) unsubscribe = stop; else stop?.(); })
-      .catch((caught) => { if (active) setError(caught instanceof Error ? caught.message : 'Could not load chat.'); })
+      .catch((caught) => { if (active) setError(friendlyError(caught, 'We could not load this chat. Please try again.')); })
       .finally(() => { if (active) setLoading(false); });
     // Safety net: if the realtime channel is slow or blocked, new messages still arrive within a few seconds.
     const poll = setInterval(() => {
@@ -63,7 +66,7 @@ export default function RequestChatScreen() {
         });
       }).catch(() => undefined);
     }, 4000);
-    return () => { active = false; clearInterval(poll); unsubscribe?.(); };
+    return () => { active = false; clearInterval(poll); unsubscribe?.(); releaseIncomingChatAlert(); };
   }, [requestId]);
 
   const send = async () => {
@@ -77,7 +80,7 @@ export default function RequestChatScreen() {
         setDraft('');
       }
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : 'Could not send message.');
+      setError(friendlyError(caught, 'We could not send your message. Please try again.'));
     } finally { setSending(false); }
   };
 

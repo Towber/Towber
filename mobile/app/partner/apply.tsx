@@ -18,6 +18,7 @@ import {
   type ApplicationStatus, type DocType, type PartnerTier, type TowVehicleType,
 } from '../../src/partnerOnboarding';
 import { font, light as L } from '../../src/theme';
+import { friendlyError, showNotice } from '../../src/userMessage';
 
 type Application = {
   id: string;
@@ -100,7 +101,7 @@ export default function PartnerApplyScreen() {
         if (row.status === 'draft' || row.status === 'needs_info') { setStarting(true); setStep(2); }
       }
     } catch (e) {
-      setLoadError(e instanceof Error ? e.message : 'Could not load your application.');
+      setLoadError(friendlyError(e, 'We could not load your application. Please try again.'));
     } finally {
       setLoading(false);
     }
@@ -116,7 +117,7 @@ export default function PartnerApplyScreen() {
   const signOut = async () => {
     await setPartnerIntent(false);
     const { error } = await supabase.auth.signOut({ scope: 'local' });
-    if (error) Alert.alert('Could not sign out', error.message);
+    if (error) showNotice('Sign out unavailable', friendlyError(error, 'We could not sign you out. Please try again.'));
   };
 
   // ---------- step 0: tier + services ----------
@@ -163,7 +164,7 @@ export default function PartnerApplyScreen() {
       setApp(data as Application);
       setStep(2);
     } catch (e) {
-      Alert.alert('Could not save', e instanceof Error ? e.message : 'Please try again.');
+      showNotice('Application not saved', friendlyError(e, 'We could not save your application. Please try again.'));
     } finally {
       setSaving(false);
     }
@@ -181,8 +182,8 @@ export default function PartnerApplyScreen() {
     if (picked.canceled || !picked.assets?.[0]) return;
     const asset = picked.assets[0];
     const mime = ALLOWED_MIME.includes(asset.mimeType ?? '') ? (asset.mimeType as string) : guessMime(asset.name);
-    if (!mime) { Alert.alert('Unsupported file', 'Please choose a PDF, JPG or PNG.'); return; }
-    if (asset.size && asset.size > MAX_BYTES) { Alert.alert('File too large', 'Files must be 10 MB or smaller.'); return; }
+    if (!mime) { showNotice('File not supported', 'Please choose a PDF, JPG or PNG.'); return; }
+    if (asset.size && asset.size > MAX_BYTES) { showNotice('File too large', 'Files must be 10 MB or smaller.'); return; }
 
     setBusyDoc(docType);
     try {
@@ -213,7 +214,7 @@ export default function PartnerApplyScreen() {
       }
       setDocs((cur) => [...cur.filter((d) => d.document_type !== docType), ins.data as Doc]);
     } catch (e) {
-      Alert.alert('Upload failed', e instanceof Error ? e.message : 'Please try again.');
+      showNotice('Upload not completed', friendlyError(e, 'We could not upload that document. Please try again.'));
     } finally {
       setBusyDoc(null);
     }
@@ -236,7 +237,7 @@ export default function PartnerApplyScreen() {
       setStarting(false);
       await load();
     } catch (e) {
-      Alert.alert('Could not submit', e instanceof Error ? e.message : 'Please try again.');
+      showNotice('Application not submitted', friendlyError(e, 'We could not submit your application. Please try again.'));
     } finally {
       setSubmitting(false);
     }

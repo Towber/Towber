@@ -12,6 +12,7 @@ import { releaseJobAlert, startJobAlert, stopJobAlert } from '../../../src/jobAl
 import { TOWBERPRO as PARTNER, proBadge, type ProKind } from '../../../src/copy';
 import { font, light as L, lightMapStyle, zar } from '../../../src/theme';
 import { SafetyVerificationPanel } from '../../../src/components/SafetyVerificationPanel';
+import { friendlyError, showNotice } from '../../../src/userMessage';
 
 type BreakdownType = 'flatbed' | 'jumpstart' | 'lockout' | 'fuel' | 'tyre' | 'repair';
 type JobAlert = {
@@ -170,7 +171,7 @@ export default function PartnerRoute() {
         setVehicleId(data.vehicle_id);
       }
     } catch (error) {
-      setAssignmentError(error instanceof Error ? error.message : 'Could not load your vehicle assignment.');
+      setAssignmentError(friendlyError(error, 'We could not load your vehicle assignment. Please try again.'));
     } finally {
       setAssignmentLoading(false);
     }
@@ -196,7 +197,7 @@ export default function PartnerRoute() {
     setLocationError(null);
     let lastUiUpdate = 0;
     void startDriverLocationStream(vehicleId, (error) => {
-      if (active) setLocationError(error.message);
+      if (active) setLocationError(friendlyError(error, 'Location sharing is temporarily unavailable.'));
     }, (fix) => {
       const now = Date.now();
       if (!active || now - lastUiUpdate < 2000) return;
@@ -210,7 +211,7 @@ export default function PartnerRoute() {
       .catch((error: unknown) => {
         if (!active) return;
         setOnline(false);
-        setLocationError(error instanceof Error ? error.message : 'Could not start location sharing.');
+        setLocationError(friendlyError(error, 'We could not start location sharing. Please check your permissions.'));
       });
     return () => {
       active = false;
@@ -323,7 +324,7 @@ export default function PartnerRoute() {
         })
         .subscribe();
     })().catch((error: unknown) => {
-      if (active) setLocationError(error instanceof Error ? error.message : 'Could not connect to job alerts.');
+      if (active) setLocationError(friendlyError(error, 'We could not connect to job alerts. Please try again.'));
     });
 
     return () => {
@@ -335,11 +336,11 @@ export default function PartnerRoute() {
 
   const changeOnline = (value: boolean) => {
     if (value && !vehicleId) {
-      Alert.alert('Vehicle required', 'Your fleet manager must assign a vehicle before you can go online.');
+      showNotice('Vehicle required', 'Your fleet manager must assign a vehicle before you can go online.');
       return;
     }
     if (!value && jobAlert) {
-      Alert.alert('Finish your job first', 'You have an active job. Complete it before going offline.');
+      showNotice('Finish your job first', 'You have an active job. Complete it before going offline.');
       return;
     }
     setJobAlert(null);
@@ -371,7 +372,7 @@ export default function PartnerRoute() {
       if (action === 'decline' || isTerminalRequestStatus(updated.status)) {
         setJobAlert(null);
         if (action === 'completed') {
-          Alert.alert('Job completed', 'The request is closed. Nice work.');
+          showNotice('Job completed', 'The request is closed. Nice work.');
         }
         return;
       }
@@ -386,7 +387,7 @@ export default function PartnerRoute() {
         setJobAlert(null);
         return;
       }
-      setActionError(error instanceof Error ? error.message : 'Could not update the request. Try again.');
+        setActionError(friendlyError(error, 'We could not update the request. Please try again.'));
     } finally {
       setActing(false);
     }
@@ -413,7 +414,7 @@ export default function PartnerRoute() {
     if (!pickup) return;
     const url = `https://www.google.com/maps/dir/?api=1&destination=${pickup.latitude},${pickup.longitude}&travelmode=driving`;
     Linking.openURL(url).catch(() => {
-      Alert.alert('Could not open maps', 'Install Google Maps, or follow the client pin on this map.');
+      showNotice('Maps unavailable', 'Install Google Maps, or follow the client pin on this map.');
     });
   };
 
@@ -434,7 +435,7 @@ export default function PartnerRoute() {
       setMenuOpen(false);
       router.replace('/(auth)/sign-in');
     } catch (error) {
-      Alert.alert('Could not switch account', error instanceof Error ? error.message : 'Please try again.');
+      showNotice('Account switch unavailable', friendlyError(error, 'We could not switch accounts. Please try again.'));
     } finally {
       setSwitching(false);
     }
