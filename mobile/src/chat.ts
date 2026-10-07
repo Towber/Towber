@@ -51,6 +51,20 @@ export function subscribeToRequestMessages(
   return () => { void supabase.removeChannel(channel); };
 }
 
+/** Listen for messages on any request the signed-in participant can access. */
+export function subscribeToIncomingMessages(
+  onMessage: (message: RequestMessage) => void,
+  onStatus?: (status: ChatChannelStatus) => void,
+) {
+  const channel = supabase
+    .channel('chat-inbox')
+    .on('postgres_changes', {
+      event: 'INSERT', schema: 'public', table: 'request_messages',
+    }, (payload) => onMessage(payload.new as RequestMessage))
+    .subscribe((status) => onStatus?.(status as ChatChannelStatus));
+  return () => { void supabase.removeChannel(channel); };
+}
+
 export async function loadMyRating(requestId: string) {
   const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
   if (sessionError) throw sessionError;
