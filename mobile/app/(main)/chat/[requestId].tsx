@@ -7,7 +7,6 @@ import { StatusBar } from 'expo-status-bar';
 
 import { supabase } from '../../../src/api';
 import { loadRequestMessages, sendRequestMessage, subscribeToRequestMessages, type RequestMessage } from '../../../src/chat';
-import { playIncomingChatAlert, releaseIncomingChatAlert } from '../../../src/chatAlert';
 import { font, light as L } from '../../../src/theme';
 
 export default function RequestChatScreen() {
@@ -39,7 +38,6 @@ export default function RequestChatScreen() {
         if (!active) return;
         setMessages((previous) => {
           if (previous.some((item) => item.id === message.id)) return previous;
-          if (message.sender_user_id !== session.data.session?.user.id) void playIncomingChatAlert();
           return [...previous, message];
         });
       }, (status) => {
@@ -65,7 +63,7 @@ export default function RequestChatScreen() {
         });
       }).catch(() => undefined);
     }, 4000);
-    return () => { active = false; clearInterval(poll); unsubscribe?.(); releaseIncomingChatAlert(); };
+    return () => { active = false; clearInterval(poll); unsubscribe?.(); };
   }, [requestId]);
 
   const send = async () => {
