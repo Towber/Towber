@@ -12,7 +12,6 @@ import { releaseJobAlert, startJobAlert, stopJobAlert } from '../../../src/jobAl
 import { TOWBERPRO as PARTNER, proBadge, type ProKind } from '../../../src/copy';
 import { font, light as L, lightMapStyle, zar } from '../../../src/theme';
 import { SafetyVerificationPanel } from '../../../src/components/SafetyVerificationPanel';
-import { LivePosterStrip } from '../../../src/components/LivePoster';
 import { friendlyError, showNotice } from '../../../src/userMessage';
 
 type BreakdownType = 'flatbed' | 'jumpstart' | 'lockout' | 'fuel' | 'tyre' | 'repair';
@@ -507,7 +506,6 @@ export default function PartnerRoute() {
       {/* Bottom control sheet */}
       <View style={[styles.sheet, { paddingBottom: Math.max(bottom, 12) + 14 }]}>
         <View style={styles.grabber} />
-        {!activeJob ? <LivePosterStrip /> : null}
         {activeJob ? (
           <>
             <Text style={styles.eyebrow}>{headline.eyebrow}</Text>

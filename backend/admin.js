@@ -101,69 +101,6 @@ export function registerAdmin(app, supabase) {
   const A = requireAdmin;
   app.get('/api/admin/me', A, (req, res) => res.json({ id: req.admin.id, email: req.admin.email }));
 
-  // ---- Live app content ----
-  const contentInput = z.object({
-    contentType: z.enum(['poster', 'announcement', 'banner']).default('poster'),
-    title: z.string().trim().min(1).max(160),
-    body: z.string().trim().max(2000).default(''),
-    imageUrl: z.union([z.string().url().max(2000), z.literal(''), z.null()]).optional().transform((v) => v || null),
-    actionUrl: z.union([z.string().url().max(2000), z.literal(''), z.null()]).optional().transform((v) => v || null),
-    status: z.enum(['draft', 'published', 'archived']).default('draft'),
-  });
-  const contentSelect = 'id, content_type, title, body, image_url, action_url, status, published_at, created_by, updated_by, created_at, updated_at';
-  app.get('/api/admin/content', A, wrap(async (_req, res) => {
-    res.json({ content: must(await supabase.from('app_content').select(contentSelect).order('updated_at', { ascending: false }).limit(200)) ?? [] });
-  }));
-  app.post('/api/admin/content', A, wrap(async (req, res) => {
-    const b = body(contentInput, req);
-    const row = must(await supabase.from('app_content').insert({
-      content_type: b.contentType, title: b.title, body: b.body, image_url: b.imageUrl, action_url: b.actionUrl,
-      status: b.status, published_at: b.status === 'published' ? new Date().toISOString() : null,
-      created_by: req.admin.id, updated_by: req.admin.id,
-    }).select(contentSelect).single());
-    await audit(req, `content.${b.status}`, 'app_content', row.id, { title: b.title });
-    res.status(201).json({ content: row });
-  }));
-  app.patch('/api/admin/content/:id', A, wrap(async (req, res) => {
-    const id = idParam(req);
-    const b = body(contentInput.partial(), req);
-    const updates = {
-      ...(b.contentType === undefined ? {} : { content_type: b.contentType }),
-      ...(b.title === undefined ? {} : { title: b.title }),
-      ...(b.body === undefined ? {} : { body: b.body }),
-      ...(b.imageUrl === undefined ? {} : { image_url: b.imageUrl }),
-      ...(b.actionUrl === undefined ? {} : { action_url: b.actionUrl }),
-      ...(b.status === undefined ? {} : { status: b.status, published_at: b.status === 'published' ? new Date().toISOString() : null }),
-      updated_by: req.admin.id,
-    };
-    const row = must(await supabase.from('app_content').update(updates).eq('id', id).select(contentSelect).single());
-    await audit(req, `content.${b.status ?? 'update'}`, 'app_content', id, { title: row.title });
-    res.json({ content: row });
-  }));
-  app.delete('/api/admin/content/:id', A, wrap(async (req, res) => {
-    const id = idParam(req);
-    must(await supabase.from('app_content').update({ status: 'archived', published_at: null, updated_by: req.admin.id }).eq('id', id));
-    await audit(req, 'content.archive', 'app_content', id);
-    res.status(204).end();
-  }));
-  app.get('/api/admin/content/events', A, async (req, res) => {
-    res.status(200).set({ 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache, no-store', Connection: 'keep-alive', 'X-Accel-Buffering': 'no' });
-    res.flushHeaders?.();
-    let previous = '';
-    let closed = false;
-    const send = async () => {
-      if (closed) return;
-      const rows = must(await supabase.from('app_content').select(contentSelect).order('updated_at', { ascending: false }).limit(200));
-      const payload = JSON.stringify({ content: rows ?? [] });
-      const signature = rows?.map((r) => `${r.id}:${r.updated_at}:${r.status}`).join('|') ?? '';
-      if (signature !== previous) { previous = signature; res.write(`event: content\\ndata: ${payload}\\n\\n`); }
-      else res.write(': heartbeat\\n\\n');
-    };
-    await send();
-    const timer = setInterval(() => { void send().catch(() => undefined); }, 2000);
-    req.on('close', () => { closed = true; clearInterval(timer); });
-  });
-
   // ---- Overview ----
   app.get('/api/admin/stats', A, wrap(async (_req, res) => {
     res.json(must(await supabase.rpc('admin_dashboard_stats')));
