@@ -7,6 +7,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { fetchActiveRequest, supabase, type BreakdownType, type ServiceFor } from '../../../src/api';
 import { TopBar } from '../../../src/components/TopBar';
+import { LivePosterStrip } from '../../../src/components/LivePoster';
 import { TOWBERPRO as PARTNER } from '../../../src/copy';
 import { STATUS_COPY, type ApplicationStatus } from '../../../src/partnerOnboarding';
 import { SERVICES, TOW_TYPE_OPTIONS, getDraft, setDraft, type TowTypeFilter } from '../../../src/requestDraft';
@@ -129,6 +130,7 @@ export default function ServiceScreen() {
               <Ionicons name="chevron-forward" size={18} color={L.disabledText} />
             </Pressable>
           ) : null}
+          <LivePosterStrip />
           <Text style={s.h1}>What do you need?</Text>
           <Text style={s.sub}>Tell us what happened so we can send the right help.</Text>
 
